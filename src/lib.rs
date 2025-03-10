@@ -2,6 +2,7 @@ mod squaresets;
 mod movegen;
 mod perft;
 mod game;
+mod mv;
 pub mod fen;
 pub mod pgn;
 pub mod san;
@@ -11,10 +12,10 @@ pub use dama_core::{
     squareset::{self, SquareSet},
     castling::{Castling, CastlingSide},
     color::{ByColor, Color},
-    mv::Move,
     piece::{ByPiece, Piece, PieceParseError},
     square::{BySquare, File, Rank, Square, SquareParseError},
 };
+pub use mv::{Move, MoveParseError};
 pub use squaresets::SquareSets;
 pub use game::Outcome;
 pub use fen::{Fen, FenError, FenParseError, FormattedFen};

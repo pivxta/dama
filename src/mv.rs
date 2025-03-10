@@ -2,8 +2,8 @@ use core::fmt;
 use std::str::FromStr;
 
 use crate::{
-    piece::{Piece, PieceParseError},
-    square::{Square, SquareParseError},
+    Piece, PieceParseError,
+    Square, SquareParseError,
 };
 use thiserror::Error;
 
@@ -68,7 +68,7 @@ impl From<PieceParseError> for MoveParseError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{mv::Move, piece::Piece::*, square::Square::*};
+    use crate::{mv::Move, Piece::*, Square::*};
 
     #[test]
     fn uci_move_parse() {
