@@ -1,9 +1,10 @@
 use crate::{
-    SquareSets, SquareSet, ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen, FenError, File, Move, Piece, Rank, San, SanError, Square
+    ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen, FenError, File, Move, Piece,
+    Rank, San, SanError, Square, SquareSet, SquareSets,
 };
 use core::fmt;
-use std::str::FromStr;
 use dama_core::enum_map;
+use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -31,7 +32,6 @@ pub struct Position {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
 #[error("illegal move.")]
 pub struct IllegalMoveError;
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
 pub enum InvalidPositionError {
@@ -286,39 +286,38 @@ impl Position {
     }
 
     #[inline]
-    pub fn play_san(&self, san: &San) -> Result<Self, SanError> {
-        Ok(self.play_unchecked(&san.to_move(self)?))
+    pub fn play_san(&mut self, san: &San) -> Result<(), SanError> {
+        self.play_unchecked(&san.to_move(self)?);
+        Ok(())
     }
 
     #[inline]
-    pub fn play(&self, mv: &Move) -> Result<Self, IllegalMoveError> {
+    pub fn play(&mut self, mv: &Move) -> Result<(), IllegalMoveError> {
         if !self.is_legal(mv) {
             return Err(IllegalMoveError);
         }
-        Ok(self.play_unchecked(mv))
+        self.play_unchecked(mv);
+        Ok(())
     }
 
-    #[must_use]
-    pub fn play_unchecked(&self, mv: &Move) -> Self {
-        let mut pos = self.clone();
-
-        let (us, them) = (pos.side_to_move, !pos.side_to_move);
-        let (moved, captured) = pos.move_pieces(mv);
+    pub fn play_unchecked(&mut self, mv: &Move) {
+        let (us, them) = (self.side_to_move, !self.side_to_move);
+        let (moved, captured) = self.move_pieces(mv);
 
         if captured == Some(Piece::Rook) && mv.to.rank() == self.their_backrank() {
-            pos.disable_castling(them, mv.to.file());
+            self.disable_castling(them, mv.to.file());
         }
 
         let mut new_ep_square = None;
         match moved {
-            Piece::Pawn if pos.is_double_push(mv) => {
+            Piece::Pawn if self.is_double_push(mv) => {
                 debug_assert_eq!(mv.from.file(), mv.to.file());
                 new_ep_square = Some(mv.from.with_rank(Rank::third_for(us)));
             }
-            Piece::Pawn if Some(mv.to) == pos.en_passant_square => {
+            Piece::Pawn if Some(mv.to) == self.en_passant_square => {
                 debug_assert!(captured.is_none());
                 let capture_square = mv.to.with_rank(Rank::fifth_for(us));
-                let (captured_color, captured) = pos
+                let (captured_color, captured) = self
                     .grab_piece(capture_square)
                     .expect("no pawn to capture en passant.");
                 debug_assert!(captured == Piece::Pawn && captured_color == them);
@@ -327,48 +326,41 @@ impl Position {
                 let promotion = mv
                     .promotion
                     .expect("pawn moving to last rank but not promoting.");
-                pos.grab_piece(mv.to);
-                pos.put_piece(mv.to, us, promotion);
+                self.grab_piece(mv.to);
+                self.put_piece(mv.to, us, promotion);
             }
             Piece::King => {
                 if self.variant == Variant::Standard {
-                    pos.try_castling_standard(mv);
+                    self.try_castling_standard(mv);
                 }
-                pos.castling[us] = Castling::default();
+                self.castling[us] = Castling::default();
             }
             Piece::Rook if mv.from.rank() == self.our_backrank() => {
-                pos.disable_castling(us, mv.from.file())
+                self.disable_castling(us, mv.from.file())
             }
             _ => {}
         }
 
         if moved != Piece::Pawn && captured.is_none() {
-            pos.halfmove_clock += 1;
+            self.halfmove_clock += 1;
         } else {
-            pos.halfmove_clock = 0;
+            self.halfmove_clock = 0;
         }
 
         if us == Color::Black {
-            pos.fullmove_number += 1;
+            self.fullmove_number += 1;
         }
 
-        pos.side_to_move = them;
-        pos.en_passant_square = new_ep_square;
-        pos.update_checkers_and_pinners();
-        pos
+        self.side_to_move = them;
+        self.en_passant_square = new_ep_square;
+        self.update_checkers_and_pinners();
     }
 
-    #[inline]
     fn move_pieces(&mut self, mv: &Move) -> (Piece, Option<Piece>) {
         let (_, moved) = self.grab_piece(mv.from).expect("no piece to be moved.");
         let captured = match self.grab_piece(mv.to) {
             Some((color, Piece::Rook))
-                if self.variant == Variant::Chess960
-                    && moved == Piece::King
-                    && color == self.side_to_move
-                    && mv.from.rank() == self.our_backrank()
-                    && mv.to.rank() == self.our_backrank()
-                    && self.our_castling().contains(mv.to.file()) =>
+                if self.variant == Variant::Chess960 && color == self.side_to_move =>
             {
                 self.try_castling_960(mv);
                 None
@@ -397,8 +389,8 @@ impl Position {
 
     #[inline]
     fn grab_piece(&mut self, sq: Square) -> Option<(Color, Piece)> {
-        let piece = self.piece_at(sq)?;
         let color = self.color_at(sq)?;
+        let piece = self.piece_at(sq)?;
 
         let sq = sq.into();
         self.pieces[piece] ^= sq;
@@ -482,7 +474,7 @@ impl Position {
             & ((SquareSet::knight_moves(king) & self.knights())
                 | (SquareSet::pawn_attacks(self.side_to_move, king) & self.pawns()));
 
-        for attacker in self.sliding_king_attackers() {
+        for attacker in self.sliding_king_attackers(king) {
             let between = SquareSet::between(attacker, king) & self.occupied();
             match between.count() {
                 0 => self.checkers |= attacker.into(),
@@ -493,20 +485,11 @@ impl Position {
     }
 
     #[inline]
-    fn sliding_king_attackers(&self) -> SquareSet {
-        let king = self.our_king();
-
-        let attackers = self.them();
-        let attacking_bishops = self.bishops() & attackers;
-        let attacking_rooks = self.rooks() & attackers;
-        let attacking_queens = self.queens() & attackers;
-
-        let bishop_rays = SquareSet::bishop_moves(king, SquareSet::EMPTY);
-        let rook_rays = SquareSet::rook_moves(king, SquareSet::EMPTY);
-
-        (attacking_bishops & bishop_rays)
-            | (attacking_rooks & rook_rays)
-            | (attacking_queens & (bishop_rays | rook_rays))
+    fn sliding_king_attackers(&self, king: Square) -> SquareSet {
+        self.them() & (
+            ((self.queens() | self.bishops()) & SquareSet::bishop_moves(king, SquareSet::EMPTY))
+                | ((self.queens() | self.rooks()) & SquareSet::rook_moves(king, SquareSet::EMPTY))
+        )
     }
 
     #[inline]
@@ -578,14 +561,16 @@ impl Position {
     fn are_castling_rights_valid(&self) -> bool {
         let white = self.castling(Color::White);
         let black = self.castling(Color::Black);
-        if white.king_side.is_some() 
-            && black.king_side.is_some() 
-            && white.king_side != black.king_side {
+        if white.king_side.is_some()
+            && black.king_side.is_some()
+            && white.king_side != black.king_side
+        {
             return false;
         }
-        if white.queen_side.is_some() 
-            && black.queen_side.is_some() 
-            && white.queen_side != black.queen_side {
+        if white.queen_side.is_some()
+            && black.queen_side.is_some()
+            && white.queen_side != black.queen_side
+        {
             return false;
         }
         true
@@ -686,7 +671,7 @@ impl Setup {
             en_passant_square: None,
             halfmove_clock: 0,
             fullmove_number: 1,
-            variant: None
+            variant: None,
         }
     }
 
@@ -777,7 +762,8 @@ impl Setup {
         match self.variant {
             Some(variant) => variant,
             None if is_chess960(self.castling[Color::White], king_squares[Color::White])
-                || is_chess960(self.castling[Color::Black], king_squares[Color::Black]) => {
+                || is_chess960(self.castling[Color::Black], king_squares[Color::Black]) =>
+            {
                 Variant::Chess960
             }
             None => Variant::Standard,
@@ -787,7 +773,7 @@ impl Setup {
 
 #[inline]
 fn is_chess960(castling: Castling, king_square: Square) -> bool {
-    castling.is_some() 
+    castling.is_some()
         && (king_square.file() != File::E
             || (castling.king_side.is_some() && castling.king_side != Some(File::H))
             || (castling.queen_side.is_some() && castling.queen_side != Some(File::A)))
@@ -845,7 +831,13 @@ mod tests {
     use std::str::FromStr;
 
     use crate::{
-        position::Setup, Color, FenError::*, InvalidPositionError::{self, *}, Move, Position, San, Square::*, SquareSet, Variant
+        position::Setup,
+        Color,
+        FenError::*,
+        InvalidPositionError::{self, *},
+        Move, Position, San,
+        Square::*,
+        SquareSet, Variant,
     };
 
     #[test]
@@ -876,7 +868,10 @@ mod tests {
             .into_position();
         assert!(matches!(pos, Err(CastlingRookPosition(_))));
         let pos = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBRN w KQkq - 0 1");
-        assert_eq!(pos, Err(InvalidPosition(InvalidPositionError::CastlingRights)));
+        assert_eq!(
+            pos,
+            Err(InvalidPosition(InvalidPositionError::CastlingRights))
+        );
         let pos =
             Position::from_fen("rnbqkbnr/pppp2pp/8/4pp1Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 0 1");
         assert_eq!(pos, Err(InvalidPosition(ExposedKing)));
@@ -916,17 +911,12 @@ mod tests {
 
     #[test]
     fn en_passant() {
-        let position = Position::new_initial()
-            .play(&mv("e2e4"))
-            .unwrap()
-            .play(&mv("h7h6"))
-            .unwrap()
-            .play(&mv("e4e5"))
-            .unwrap()
-            .play(&mv("d7d5"))
-            .unwrap()
-            .play(&mv("e5d6"))
-            .unwrap();
+        let mut position = Position::new_initial();
+        position.play(&mv("e2e4")).unwrap();
+        position.play(&mv("h7h6")).unwrap();
+        position.play(&mv("e4e5")).unwrap();
+        position.play(&mv("d7d5")).unwrap();
+        position.play(&mv("e5d6")).unwrap();
 
         assert_eq!(
             position.fen().to_string(),
@@ -936,14 +926,14 @@ mod tests {
 
     #[test]
     fn short_castle() {
-        let position = Position::new_initial()
-            .play_unchecked(&mv("e2e4"))
-            .play_unchecked(&mv("e7e5"))
-            .play_unchecked(&mv("g1f3"))
-            .play_unchecked(&mv("b8c6"))
-            .play_unchecked(&mv("f1b5"))
-            .play_unchecked(&mv("g8f6"))
-            .play_unchecked(&mv("e1g1"));
+        let mut position = Position::new_initial();
+        position.play_unchecked(&mv("e2e4"));
+        position.play_unchecked(&mv("e7e5"));
+        position.play_unchecked(&mv("g1f3"));
+        position.play_unchecked(&mv("b8c6"));
+        position.play_unchecked(&mv("f1b5"));
+        position.play_unchecked(&mv("g8f6"));
+        position.play_unchecked(&mv("e1g1"));
 
         assert_eq!(
             position.fen().to_string(),
@@ -953,12 +943,11 @@ mod tests {
 
     #[test]
     fn long_castle() {
-        let position =
+        let mut position =
             Position::from_fen("r1bq1rk1/pppp1ppp/2n2n2/8/1b2P3/2N1Q3/PPPB1PPP/R3KBNR w KQ - 7 7")
                 .unwrap();
 
-        let position = position.play(&mv("e1c1"))
-                .unwrap();
+        position.play(&mv("e1c1")).unwrap();
 
         assert_eq!(
             position.fen().to_string(),
@@ -968,20 +957,16 @@ mod tests {
 
     #[test]
     fn promotion() {
-        let position = Position::from_fen("5r2/6P1/k6K/8/8/8/8/8 w - - 1 1")
-            .unwrap()
-            .play(&mv("g7g8q"))
-            .unwrap();
+        let mut position = Position::from_fen("5r2/6P1/k6K/8/8/8/8/8 w - - 1 1").unwrap();
+        position.play(&mv("g7g8q")).unwrap();
 
         assert_eq!(position.fen().to_string(), "5rQ1/8/k6K/8/8/8/8/8 b - - 0 1")
     }
 
     #[test]
     fn promotion_capture() {
-        let position = Position::from_fen("5r2/6P1/k6K/8/8/8/8/8 w - - 1 1")
-            .unwrap()
-            .play(&mv("g7f8q"))
-            .unwrap();
+        let mut position = Position::from_fen("5r2/6P1/k6K/8/8/8/8/8 w - - 1 1").unwrap();
+        position.play(&mv("g7f8q")).unwrap();
 
         assert_eq!(position.fen().to_string(), "5Q2/8/k6K/8/8/8/8/8 b - - 0 1")
     }
@@ -1004,7 +989,7 @@ mod tests {
         let mut position = Position::new_initial();
 
         for san in moves.into_iter().map(San::from_str).map(Result::unwrap) {
-            position = position.play_san(&san).unwrap();
+            position.play_san(&san).unwrap();
         }
 
         assert_eq!(
@@ -1027,7 +1012,7 @@ mod tests {
             Position::from_fen("bqrkrbnn/pppppppp/8/8/8/8/PPPPPPPP/BQRKRBNN w KQkq - 0 1").unwrap();
 
         for san in moves.into_iter().map(San::from_str).map(Result::unwrap) {
-            position = position.play_san(&san).unwrap();
+            position.play_san(&san).unwrap();
         }
 
         assert_eq!(

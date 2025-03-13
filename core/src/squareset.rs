@@ -68,41 +68,42 @@ impl SquareSet {
     pub const fn count(self) -> u32 {
         self.0.count_ones()
     }
-    
+
     #[inline]
-    pub const fn advance_files(self) -> SquareSet {
+    pub const fn shift_right(self) -> SquareSet {
         SquareSet((self.0 & !SquareSet::from_file(File::H).0).wrapping_shl(1))
     }
 
     #[inline]
-    pub const fn retreat_files(self) -> SquareSet {
+    pub const fn shift_left(self) -> SquareSet {
         SquareSet((self.0 & !SquareSet::from_file(File::A).0).wrapping_shr(1))
     }
 
     #[inline]
-    pub const fn advance_ranks(self) -> SquareSet {
-        SquareSet(self.0.wrapping_shl(8))
+    pub const fn shift_up(self, offset: u32) -> SquareSet {
+        SquareSet(self.0.wrapping_shl(8 * offset))
     }
 
     #[inline]
-    pub const fn retreat_ranks(self) -> SquareSet {
-        SquareSet(self.0.wrapping_shr(8))
+    pub const fn shift_down(self, offset: u32) -> SquareSet {
+        SquareSet(self.0.wrapping_shr(8 * offset))
     }
 
     #[inline]
     pub fn as_square(self) -> Option<Square> {
-        if self.count() > 1 {
+        let first = self.first()?;
+        if !(self ^ first.into()).is_empty() {
             return None;
         }
-        self.next_square()
+        Some(first)
     }
 
     #[inline]
-    const fn next_square(self) -> Option<Square> {
+    const fn first(self) -> Option<Square> {
         if self.is_empty() {
             return None;
         }
-        Some(Square::ALL[self.0.trailing_zeros() as usize])
+        Some(unsafe { Square::from_index_unchecked(self.0.trailing_zeros() as usize) })
     }
 
     #[inline]
@@ -130,7 +131,7 @@ impl Iterator for Iter {
 
     #[inline]
     fn next(&mut self) -> Option<Square> {
-        if let Some(square) = self.remaining.next_square() {
+        if let Some(square) = self.remaining.first() {
             self.remaining ^= SquareSet::from_square(square);
             return Some(square);
         }
@@ -294,11 +295,11 @@ impl fmt::Display for SquareSet {
 
 #[cfg(test)]
 mod tests {
-    use crate::{squareset::SquareSet, square::Square::*};
+    use crate::{square::Square::*, squareset::SquareSet};
 
     #[test]
     fn squareset_iter() {
-        let squares = 
+        let squares =
             SquareSet::from(A1) | SquareSet::from(B6) | SquareSet::from(D3) | SquareSet::from(H8);
 
         let squares_vec = squares.iter().collect::<Vec<_>>();

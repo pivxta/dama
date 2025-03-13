@@ -10,6 +10,10 @@ pub fn perft(position: &Position, depth: u32) -> u64 {
     position
         .legal_moves()
         .iter()
-        .map(|mv| perft(&position.play_unchecked(mv), depth - 1))
+        .map(|mv| {
+            let mut child = position.clone();
+            child.play_unchecked(mv);
+            perft(&child, depth - 1)
+        })
         .sum()
 }

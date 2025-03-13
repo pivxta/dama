@@ -17,14 +17,14 @@ pub struct OutcomeParseError;
 
 impl FromStr for Outcome {
     type Err = OutcomeParseError;
-    
+
     #[inline]
     fn from_str(s: &str) -> Result<Self, OutcomeParseError> {
         match s {
             "1-0" => Ok(Outcome::Winner(Color::White)),
             "0-1" => Ok(Outcome::Winner(Color::Black)),
             "1/2-1/2" => Ok(Outcome::Draw),
-            _ => Err(OutcomeParseError)
+            _ => Err(OutcomeParseError),
         }
     }
 }

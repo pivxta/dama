@@ -1,7 +1,7 @@
 use crate::{
-    squareset::SquareSet,
     moves,
     square::{BySquare, File, Rank, Square},
+    squareset::SquareSet,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

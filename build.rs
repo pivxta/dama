@@ -1,4 +1,4 @@
-use dama_core::{squareset::SquareSet, magic, moves, square::Square};
+use dama_core::{magic, moves, square::Square, squareset::SquareSet};
 use std::{
     array, env,
     fs::File,
@@ -9,16 +9,18 @@ use std::{
 fn main() -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
 
-    let king_table: [_; 64] = array::from_fn(|n| moves::king(Square::ALL[n]));
-    let knight_table: [_; 64] = array::from_fn(|n| moves::knight(Square::ALL[n]));
+    let king_table: [_; 64] = array::from_fn(|n| moves::king(Square::from_index(n)));
+    let knight_table: [_; 64] = array::from_fn(|n| moves::knight(Square::from_index(n)));
     let black_pawn_cap_table: [_; 64] =
-        array::from_fn(|n| moves::black_pawn_captures(Square::ALL[n]));
+        array::from_fn(|n| moves::black_pawn_captures(Square::from_index(n)));
     let white_pawn_cap_table: [_; 64] =
-        array::from_fn(|n| moves::white_pawn_captures(Square::ALL[n]));
-    let line_between_table: [[_; 64]; 64] =
-        array::from_fn(|sa| array::from_fn(|sb| between(Square::ALL[sa], Square::ALL[sb])));
-    let line_table: [[_; 64]; 64] =
-        array::from_fn(|sa| array::from_fn(|sb| ray(Square::ALL[sa], Square::ALL[sb])));
+        array::from_fn(|n| moves::white_pawn_captures(Square::from_index(n)));
+    let line_between_table: [[_; 64]; 64] = array::from_fn(|sa| {
+        array::from_fn(|sb| between(Square::from_index(sa), Square::from_index(sb)))
+    });
+    let line_table: [[_; 64]; 64] = array::from_fn(|sa| {
+        array::from_fn(|sb| ray(Square::from_index(sa), Square::from_index(sb)))
+    });
 
     let mut sliding_table = vec![SquareSet::EMPTY; magic::SLIDING_TABLE_SIZE];
 

@@ -86,8 +86,7 @@ impl FromStr for Fen {
         use FenParseError::*;
         let pieces = parse_pieces(sections.next().ok_or(InvalidSectionCount)?)?;
         let side_to_move = parse_side_to_move(sections.next().ok_or(InvalidSectionCount)?)?;
-        let castling =
-            parse_castling(&pieces, sections.next().ok_or(InvalidSectionCount)?)?;
+        let castling = parse_castling(&pieces, sections.next().ok_or(InvalidSectionCount)?)?;
         let en_passant = match sections.next() {
             Some(s) => parse_en_passant(s)?,
             None => None,
@@ -519,25 +518,27 @@ mod tests {
 
     use crate::{
         fen::Format,
-        SquareSet, Castling, Color, Fen, FenParseError, Piece,
+        Castling, Color, Fen, FenParseError, Piece,
         Rank::{self, *},
         Square::{self, *},
+        SquareSet,
     };
 
     #[test]
     fn chess960_ambiguous_castle() {
         use crate::Position;
-        let pos =
+        let mut pos =
             Position::from_fen("n1rnbbk1/p1ppppp1/qr6/1p5p/1P5P/1RQ5/P1PPPPP1/N1RNBBK1 w Qq - 6 7")
-                .unwrap()
-                .play_unchecked(&"b3b1".parse().unwrap());
+                .unwrap();
+        
+        pos.play_unchecked(&"b3b1".parse().unwrap());
 
         assert_eq!(
             pos.fen().to_string(),
             "n1rnbbk1/p1ppppp1/qr6/1p5p/1P5P/2Q5/P1PPPPP1/NRRNBBK1 b Cq - 7 7"
         );
 
-        let pos = pos.play_unchecked(&"b6b8".parse().unwrap());
+        pos.play_unchecked(&"b6b8".parse().unwrap());
 
         assert_eq!(
             pos.fen().to_string(),
@@ -559,9 +560,10 @@ mod tests {
     #[test]
     fn xfen_enpassant() {
         use crate::Position;
-        let pos = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-            .unwrap()
-            .play_unchecked(&"e2e4".parse().unwrap());
+        let mut pos = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+            .unwrap();
+        
+        pos.play_unchecked(&"e2e4".parse().unwrap());
 
         assert_eq!(
             pos.fen().format(Format::XFen).to_string(),
@@ -645,14 +647,8 @@ mod tests {
         assert_eq!(pos.colored(Color::White), rank(First) | rank(Second));
         assert_eq!(pos.colored(Color::Black), rank(Seventh) | rank(Eighth));
         assert_eq!(pos.pieces(Piece::Pawn), rank(Second) | rank(Seventh));
-        assert_eq!(
-            pos.pieces(Piece::Bishop),
-            sq(C1) | sq(C8) | sq(F1) | sq(F8)
-        );
-        assert_eq!(
-            pos.pieces(Piece::Knight),
-            sq(B1) | sq(B8) | sq(G1) | sq(G8)
-        );
+        assert_eq!(pos.pieces(Piece::Bishop), sq(C1) | sq(C8) | sq(F1) | sq(F8));
+        assert_eq!(pos.pieces(Piece::Knight), sq(B1) | sq(B8) | sq(G1) | sq(G8));
         assert_eq!(pos.pieces(Piece::Rook), sq(A1) | sq(A8) | sq(H1) | sq(H8));
         assert_eq!(pos.pieces(Piece::Queen), sq(D1) | sq(D8));
         assert_eq!(pos.pieces(Piece::King), sq(E1) | sq(E8));

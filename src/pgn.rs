@@ -1,8 +1,12 @@
 use core::{result, str};
-use std::{fmt::Debug, io::{self, Bytes, Read}, ops::Range};
+use std::{
+    fmt::Debug,
+    io::{self, Bytes, Read},
+    ops::Range,
+};
 use thiserror::Error;
 
-use crate::{Outcome, San, SanParseError, Color};
+use crate::{Color, Outcome, San, SanParseError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ControlFlow {
@@ -12,7 +16,7 @@ pub enum ControlFlow {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Annotation {
-    pub id: u8
+    pub id: u8,
 }
 
 pub trait Visitor {
@@ -47,14 +51,14 @@ pub trait Visitor {
 
     fn enter_variation(&mut self) -> ControlFlow;
     fn leave_variation(&mut self) {}
-    
+
     fn finish(&mut self) {}
 }
 
 #[derive(Debug)]
-pub struct Reader<R> 
+pub struct Reader<R>
 where
-    R: Read
+    R: Read,
 {
     bytes: Bytes<R>,
     next: Option<u8>,
@@ -69,7 +73,7 @@ pub enum Error<VisitorError> {
     #[error("{0}")]
     Visitor(VisitorError),
     #[error("{0}")]
-    Parse(ParseError)
+    Parse(ParseError),
 }
 
 type ParseResult<T> = Result<T, ParseError>;
@@ -79,7 +83,7 @@ type ParseResult<T> = Result<T, ParseError>;
 pub struct ParseError {
     pub line: u32,
     pub column: u32,
-    pub kind: ParseErrorKind
+    pub kind: ParseErrorKind,
 }
 
 #[derive(Debug, Error)]
@@ -115,10 +119,9 @@ impl Reader<&[u8]> {
     }
 }
 
-
 impl<R> Reader<R>
 where
-    R: Read
+    R: Read,
 {
     pub fn new(read: R) -> Self {
         Self {
@@ -132,8 +135,8 @@ where
     }
 
     pub fn visit_game<V>(&mut self, visitor: &mut V) -> Result<bool, Error<V::Error>>
-    where 
-        V: Visitor
+    where
+        V: Visitor,
     {
         if self.unrecoverable {
             return Ok(false);
@@ -157,13 +160,12 @@ where
         Ok(true)
     }
 
-
     pub fn read_tag_pairs<V>(&mut self, visitor: &mut V) -> Result<(), Error<V::Error>>
-    where 
-        V: Visitor
+    where
+        V: Visitor,
     {
         visitor.enter_tag_pairs();
-       
+
         self.skip_whitespace()?;
         while self.next_if_eq(b'[')?.is_some() {
             self.scratch.clear();
@@ -182,7 +184,9 @@ where
                     .map_err(|err| self.error(ParseErrorKind::Utf8(err)))?,
             );
 
-            visitor.visit_tag_pair(name, value).map_err(Error::Visitor)?;
+            visitor
+                .visit_tag_pair(name, value)
+                .map_err(Error::Visitor)?;
         }
 
         Ok(())
@@ -204,7 +208,7 @@ where
                 }
             }
         }
-        
+
         'outer: while self.next_if_eq(b'[')?.is_some() {
             while let Some(c) = self.peek()? {
                 match c {
@@ -231,9 +235,7 @@ where
         // Tries to skip until the next tag pair
         while let Some(c) = self.peek()? {
             match c {
-                b'[' if !comment => {
-                    return Ok(())
-                }
+                b'[' if !comment => return Ok(()),
                 b'{' if !comment => comment = true,
                 b'}' => comment = false,
                 _ => {}
@@ -267,13 +269,13 @@ where
                 b'\\' => match self.next()? {
                     Some(b'"') => self.scratch.push(b'"'),
                     Some(b'\\') => self.scratch.push(b'\\'),
-                    _ => return Err(self.error_msg("invalid escape character")) 
+                    _ => return Err(self.error_msg("invalid escape character")),
                 },
                 b'\n' => return Err(self.error_msg("unterminated string")),
                 _ if c.is_ascii_control() => {
                     return Err(self.error_msg("control characters are not allowed inside strings."))
                 }
-                _ => self.scratch.push(c)
+                _ => self.scratch.push(c),
             }
         }
         let scratch_end = self.scratch.len();
@@ -281,34 +283,34 @@ where
     }
 
     pub fn read_movetext<V>(&mut self, visitor: &mut V) -> Result<(), Error<V::Error>>
-    where 
-        V: Visitor
+    where
+        V: Visitor,
     {
         let mut variation = VariationInfo {
             depth: 0,
             skip: match visitor.enter_game() {
                 ControlFlow::Continue => None,
                 ControlFlow::Skip => Some(0),
-            }
+            },
         };
 
         loop {
             self.skip_whitespace()?;
             match self.read_token(&mut variation, visitor)? {
                 Continue(false) => break Ok(()),
-                Continue(true) => {},
+                Continue(true) => {}
             }
         }
     }
 
     #[inline]
     fn read_token<V>(
-        &mut self, 
-        variation: &mut VariationInfo, 
-        visitor: &mut V
+        &mut self,
+        variation: &mut VariationInfo,
+        visitor: &mut V,
     ) -> Result<Continue, Error<V::Error>>
     where
-        V: Visitor
+        V: Visitor,
     {
         if matches!(self.peek()?, Some(b'[') | None) {
             return Ok(Continue(false));
@@ -324,12 +326,10 @@ where
                     return Ok(Continue(false));
                 }
             }
-            Some(b'(') if should_visit => {
-                match visitor.enter_variation() {
-                    ControlFlow::Skip => variation.enter_skip(),
-                    ControlFlow::Continue => variation.enter(),
-                }
-            }
+            Some(b'(') if should_visit => match visitor.enter_variation() {
+                ControlFlow::Skip => variation.enter_skip(),
+                ControlFlow::Continue => variation.enter(),
+            },
             Some(b'(') => {
                 variation.enter();
             }
@@ -347,21 +347,27 @@ where
                     if let Some(d) = self.next_if(|c| matches!(c, b'-' | b'/'))? {
                         let outcome = self.parse_outcome(c, d)?;
                         if should_visit {
-                            visitor.visit_outcome(Some(outcome)).map_err(Error::Visitor)?;
+                            visitor
+                                .visit_outcome(Some(outcome))
+                                .map_err(Error::Visitor)?;
                         }
                         if variation.depth == 0 {
-                            return Ok(Continue(false))
+                            return Ok(Continue(false));
                         }
                         return Ok(Continue(true));
                     }
                 }
 
                 let move_number = self.parse_move_number(c)?;
-                let move_ch = self.next()?.ok_or(self.error(ParseErrorKind::UnexpectedEof))?;
+                let move_ch = self
+                    .next()?
+                    .ok_or(self.error(ParseErrorKind::UnexpectedEof))?;
                 let mv = self.parse_move(move_ch)?;
-                
+
                 if should_visit {
-                    visitor.visit_move(Some(move_number), mv).map_err(Error::Visitor)?;
+                    visitor
+                        .visit_move(Some(move_number), mv)
+                        .map_err(Error::Visitor)?;
                 }
 
                 if let Some(suffix) = self.parse_move_suffix()? {
@@ -396,13 +402,17 @@ where
             }
             Some(b'$') if should_visit => {
                 visitor
-                    .visit_annotation(Annotation { id: self.parse_number()? as u8 })
+                    .visit_annotation(Annotation {
+                        id: self.parse_number()? as u8,
+                    })
                     .map_err(Error::Visitor)?;
             }
             Some(c) => {
-                return Err(self.error_msg(format!("unexpected character '{}'", c as char)).into());
+                return Err(self
+                    .error_msg(format!("unexpected character '{}'", c as char))
+                    .into());
             }
-            None => unreachable!()
+            None => unreachable!(),
         }
         Ok(Continue(true))
     }
@@ -428,13 +438,17 @@ where
             (b'1', b'-', b'0') => Ok(Outcome::Winner(Color::White)),
             (b'0', b'-', b'1') => Ok(Outcome::Winner(Color::Black)),
             (b'1', b'/', b'2') => {
-                self.next_if_eq(b'-')?.ok_or(self.error_msg("invalid game result"))?;
-                self.next_if_eq(b'1')?.ok_or(self.error_msg("invalid game result"))?;
-                self.next_if_eq(b'/')?.ok_or(self.error_msg("invalid game result"))?;
-                self.next_if_eq(b'2')?.ok_or(self.error_msg("invalid game result"))?;
+                self.next_if_eq(b'-')?
+                    .ok_or(self.error_msg("invalid game result"))?;
+                self.next_if_eq(b'1')?
+                    .ok_or(self.error_msg("invalid game result"))?;
+                self.next_if_eq(b'/')?
+                    .ok_or(self.error_msg("invalid game result"))?;
+                self.next_if_eq(b'2')?
+                    .ok_or(self.error_msg("invalid game result"))?;
                 Ok(Outcome::Draw)
             }
-            _ => Err(self.error_msg("invalid game result"))
+            _ => Err(self.error_msg("invalid game result")),
         }
     }
 
@@ -478,21 +492,24 @@ where
             Some(b'!') => match self.next_if(|c| matches!(c, b'!' | b'?'))? {
                 Some(b'!') => 3,
                 Some(b'?') => 5,
-                _ => 1
-            }
+                _ => 1,
+            },
             Some(b'?') => match self.next_if(|c| matches!(c, b'!' | b'?'))? {
                 Some(b'!') => 6,
                 Some(b'?') => 4,
-                _ => 2
-            }
-            _ => return Ok(None)
+                _ => 2,
+            },
+            _ => return Ok(None),
         };
         Ok(Some(Annotation { id }))
     }
 
     fn parse_move(&mut self, c: u8) -> ParseResult<San> {
         if !is_symbol(c) {
-            return Err(self.error_msg(format!("expected SAN move, found character '{}'", c as char)))
+            return Err(self.error_msg(format!(
+                "expected SAN move, found character '{}'",
+                c as char
+            )));
         }
 
         self.scratch.clear();
@@ -508,7 +525,7 @@ where
     fn take_while(&mut self, f: impl Fn(u8) -> bool) -> ParseResult<()> {
         while let Some(c) = self.peek()? {
             if !f(c) {
-                return Ok(())
+                return Ok(());
             }
             self.scratch.push(c);
             self.next()?;
@@ -520,7 +537,7 @@ where
     fn skip_whitespace(&mut self) -> ParseResult<()> {
         while let Some(c) = self.peek()? {
             if !is_whitespace(c) {
-                return Ok(())
+                return Ok(());
             }
             self.next()?;
         }
@@ -540,7 +557,7 @@ where
     #[inline]
     fn next_if(&mut self, f: impl Fn(u8) -> bool) -> ParseResult<Option<u8>> {
         self.skip_whitespace()?;
-        if let Some(c) = self.peek()?.filter(|&c| f(c)){
+        if let Some(c) = self.peek()?.filter(|&c| f(c)) {
             self.next()?;
             return Ok(Some(c));
         }
@@ -552,14 +569,10 @@ where
         let next = if self.next.is_some() {
             self.next.take()
         } else {
-            self
-                .bytes
-                .next()
-                .transpose()
-                .map_err(|err| {
-                    self.unrecoverable = true;
-                    self.error(ParseErrorKind::Io(err))
-                })?
+            self.bytes.next().transpose().map_err(|err| {
+                self.unrecoverable = true;
+                self.error(ParseErrorKind::Io(err))
+            })?
         };
         match next {
             Some(b'\n') => {
@@ -596,7 +609,7 @@ where
         ParseError {
             line: self.line,
             column: self.column,
-            kind
+            kind,
         }
     }
 }
@@ -606,7 +619,7 @@ pub struct Continue(bool);
 #[derive(Debug)]
 struct VariationInfo {
     depth: u32,
-    skip: Option<u32>
+    skip: Option<u32>,
 }
 
 impl VariationInfo {
@@ -648,14 +661,17 @@ fn is_symbol(c: u8) -> bool {
 impl<E> From<ParseError> for Error<E> {
     #[inline]
     fn from(err: ParseError) -> Self {
-        Self::Parse(err)    
+        Self::Parse(err)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        pgn::{self, ControlFlow, Reader, Visitor},
+        Outcome, Position, San,
+    };
     use dama_core::color::Color;
-    use crate::{pgn::{self, ControlFlow, Reader, Visitor}, Outcome, Position, San};
 
     #[test]
     fn pgn_game() {
@@ -710,7 +726,7 @@ already up material and with the safer king. White resigns.} 0-1
             comments: u32,
             position: Position,
             outcome: Option<Outcome>,
-            variation: u32
+            variation: u32,
         }
 
         impl Visitor for Game {
@@ -731,7 +747,7 @@ already up material and with the safer king. White resigns.} 0-1
 
             fn visit_move(&mut self, _number: Option<u32>, mv: San) -> anyhow::Result<()> {
                 if self.variation == 0 {
-                    self.position = self.position.play_san(&mv)?;
+                    self.position.play_san(&mv)?;
                 }
                 Ok(())
             }
@@ -749,7 +765,6 @@ already up material and with the safer king. White resigns.} 0-1
             fn leave_variation(&mut self) {
                 self.variation -= 1;
             }
-
         }
 
         let mut reader = Reader::from_string(freestyle_magnus_vs_javokhir);
@@ -761,10 +776,13 @@ already up material and with the safer king. White resigns.} 0-1
             variation: 0,
         };
         reader.visit_game(&mut game).unwrap();
-        
+
         assert_eq!(game.tag_count, 14);
         assert_eq!(game.comments, 22);
-        assert_eq!(game.position.fen().to_string(), "8/kb3p1p/1p3P2/p2q1Q2/P1pB2B1/3r1NPK/7P/2b5 w - - 4 29");
+        assert_eq!(
+            game.position.fen().to_string(),
+            "8/kb3p1p/1p3P2/p2q1Q2/P1pB2B1/3r1NPK/7P/2b5 w - - 4 29"
+        );
         assert_eq!(game.outcome, Some(Outcome::Winner(Color::Black)));
         assert_eq!(game.variation, 0);
     }
@@ -895,12 +913,12 @@ already up material and with the safer king. White resigns.} 0-1
                 match (name, value) {
                     ("Result", "1-0" | "0-1" | "1/2-1/2") => Ok(()),
                     ("Result", _) => Err(anyhow::Error::msg("invalid result.")),
-                    _ => Ok(())
+                    _ => Ok(()),
                 }
             }
 
             fn visit_move(&mut self, _number: Option<u32>, mv: San) -> anyhow::Result<()> {
-                self.position = self.position.play_san(&mv)?;
+                self.position.play_san(&mv)?;
                 Ok(())
             }
 
@@ -910,18 +928,28 @@ already up material and with the safer king. White resigns.} 0-1
         }
 
         let mut reader = Reader::from_string(&pgn1);
-        let mut game = Game { position: Position::new_initial() };
+        let mut game = Game {
+            position: Position::new_initial(),
+        };
 
         assert!(reader.visit_game(&mut game).is_err());
         assert!(reader.visit_game(&mut game).is_err());
         assert!(reader.visit_game(&mut game).is_ok());
 
         let mut reader = Reader::from_string(&pgn2);
-        let mut game = Game { position: Position::new_initial() };
-        
-        assert!(matches!(reader.visit_game(&mut game), Err(pgn::Error::Visitor(_))));
+        let mut game = Game {
+            position: Position::new_initial(),
+        };
+
+        assert!(matches!(
+            reader.visit_game(&mut game),
+            Err(pgn::Error::Visitor(_))
+        ));
 
         reader.visit_game(&mut game).unwrap();
-        assert_eq!(game.position.fen().to_string(), "8/5Kpp/8/5p2/k7/5P2/6PP/8 b - - 1 38");
+        assert_eq!(
+            game.position.fen().to_string(),
+            "8/5Kpp/8/5p2/k7/5P2/6PP/8 b - - 1 38"
+        );
     }
 }

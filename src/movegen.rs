@@ -1,4 +1,4 @@
-use crate::{SquareSets, SquareSet, File, Move, Piece, Position, Square, Variant};
+use crate::{File, Move, Piece, Position, Square, SquareSet, SquareSets, Variant};
 use arrayvec::ArrayVec;
 use dama_core::square::Rank;
 
@@ -203,27 +203,32 @@ impl Position {
         }
 
         let checkers = self.checkers();
-        (checkers | SquareSet::between(checkers.as_square().unwrap(), self.our_king()))
-            & !self.us()
+        (checkers | SquareSet::between(checkers.as_square().unwrap(), self.our_king())) & !self.us()
     }
 
     #[inline]
     fn danger_squares(&self) -> SquareSet {
         let occupied = self.occupied() ^ self.our_king().into();
-        let attacked = 
+        let attacked =
             SquareSet::all_pawn_attacks(!self.side_to_move(), self.pawns() & self.them());
         let attacked = (self.knights() & self.them())
             .iter()
             .fold(attacked, |att, sq| att | SquareSet::knight_moves(sq));
         let attacked = (self.bishops() & self.them())
             .iter()
-            .fold(attacked, |att, sq| att | SquareSet::bishop_moves(sq, occupied));
+            .fold(attacked, |att, sq| {
+                att | SquareSet::bishop_moves(sq, occupied)
+            });
         let attacked = (self.rooks() & self.them())
             .iter()
-            .fold(attacked, |att, sq| att | SquareSet::rook_moves(sq, occupied));
+            .fold(attacked, |att, sq| {
+                att | SquareSet::rook_moves(sq, occupied)
+            });
         let attacked = (self.queens() & self.them())
             .iter()
-            .fold(attacked, |att, sq| att | SquareSet::queen_moves(sq, occupied));
+            .fold(attacked, |att, sq| {
+                att | SquareSet::queen_moves(sq, occupied)
+            });
 
         attacked | SquareSet::king_moves(self.their_king())
     }
@@ -430,18 +435,26 @@ mod tests {
         position
             .legal_moves()
             .par_iter()
-            .map(|mv| perft_internal(position.play_unchecked(mv), depth - 1))
+            .map(|mv| {
+                let mut child = position.clone();
+                child.play_unchecked(mv);
+                perft_internal(&child, depth - 1)
+            })
             .sum()
     }
 
-    fn perft_internal(position: Position, depth: u32) -> u64 {
+    fn perft_internal(position: &Position, depth: u32) -> u64 {
         if depth == 1 {
             return position.legal_moves().len() as u64;
         }
         position
             .legal_moves()
             .iter()
-            .map(|mv| perft_internal(position.play_unchecked(mv), depth - 1))
+            .map(|mv| {
+                let mut child = position.clone();
+                child.play_unchecked(mv);
+                perft_internal(&child, depth - 1)
+            })
             .sum()
     }
 }

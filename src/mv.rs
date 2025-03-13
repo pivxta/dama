@@ -1,10 +1,7 @@
 use core::fmt;
 use std::str::FromStr;
 
-use crate::{
-    Piece, PieceParseError,
-    Square, SquareParseError,
-};
+use crate::{Piece, PieceParseError, Square, SquareParseError};
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

@@ -48,7 +48,7 @@ impl San {
     pub fn moved_piece(&self) -> Piece {
         match self.kind {
             Kind::Castling(_) => Piece::King,
-            Kind::Simple { piece, .. } => piece
+            Kind::Simple { piece, .. } => piece,
         }
     }
 

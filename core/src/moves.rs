@@ -1,4 +1,4 @@
-use crate::{squareset::SquareSet, square::Square};
+use crate::{square::Square, squareset::SquareSet};
 
 #[inline]
 pub fn bishop(square: Square, occupied: SquareSet) -> SquareSet {

@@ -1,4 +1,4 @@
-use crate::{SquareSet, Color, Rank, Square};
+use crate::{Color, Rank, Square, SquareSet};
 use dama_core::magic;
 
 pub trait SquareSets {
@@ -53,15 +53,15 @@ impl SquareSets for SquareSet {
     #[inline]
     fn pawn_pushes(color: Color, square: Square, occupied: SquareSet) -> SquareSet {
         let single_push = match color {
-            Color::White => SquareSet::from(square).advance_ranks() & !occupied,
-            Color::Black => SquareSet::from(square).retreat_ranks() & !occupied,
+            Color::White => SquareSet::from(square).shift_up(1) & !occupied,
+            Color::Black => SquareSet::from(square).shift_down(1) & !occupied,
         };
         if single_push.is_empty() || square.rank() != Rank::second_for(color) {
             return single_push;
         }
         let double_push = match color {
-            Color::White => single_push.advance_ranks() & !occupied,
-            Color::Black => single_push.retreat_ranks() & !occupied,
+            Color::White => single_push.shift_up(1) & !occupied,
+            Color::Black => single_push.shift_down(1) & !occupied,
         };
         single_push | double_push
     }
@@ -69,10 +69,10 @@ impl SquareSets for SquareSet {
     #[inline]
     fn all_pawn_attacks(color: Color, pawns: SquareSet) -> SquareSet {
         let front = match color {
-            Color::White => pawns.advance_ranks(),
-            Color::Black => pawns.retreat_ranks(),
+            Color::White => pawns.shift_up(1),
+            Color::Black => pawns.shift_down(1),
         };
-        front.retreat_files() | front.advance_files()
+        front.shift_right() | front.shift_left()
     }
 
     #[inline]
