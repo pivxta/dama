@@ -1,6 +1,5 @@
-use crate::{File, Move, Piece, Position, Square, SquareSet, SquareSets, Variant};
+use crate::{Color, File, Rank, Move, Piece, Position, Square, SquareSet, SquareSets};
 use arrayvec::ArrayVec;
-use dama_core::square::Rank;
 
 pub const MAX_LEGAL_MOVES: usize = 218;
 
@@ -11,25 +10,6 @@ impl Position {
         self.targeted_legal_moves(SquareSet::FULL)
     }
 
-    pub fn legal_moves_for(&self, piece: Piece) -> MoveList {
-        let mut list = MoveList::new();
-
-        match self.checkers().count() {
-            0 | 1 => match piece {
-                Piece::Pawn => self.add_pawn_moves(&mut list, self.target_squares()),
-                Piece::Knight => self.add_knight_moves(&mut list, self.target_squares()),
-                Piece::Bishop => self.add_slider_moves::<Bishop>(&mut list, self.target_squares()),
-                Piece::Rook => self.add_slider_moves::<Rook>(&mut list, self.target_squares()),
-                Piece::Queen => self.add_slider_moves::<Queen>(&mut list, self.target_squares()),
-                Piece::King => self.add_king_moves(&mut list, SquareSet::FULL),
-            },
-            _ if piece == Piece::King => self.add_king_moves(&mut list, SquareSet::FULL),
-            _ => {}
-        }
-
-        list
-    }
-
     #[inline]
     fn targeted_legal_moves(&self, targets: SquareSet) -> MoveList {
         let mut list = MoveList::new();
@@ -37,6 +17,7 @@ impl Position {
         match self.checkers().count() {
             0 | 1 => {
                 let piece_targets = targets & self.target_squares();
+                self.add_en_passant(&mut list, piece_targets);
                 self.add_pawn_moves(&mut list, piece_targets);
                 self.add_knight_moves(&mut list, piece_targets);
                 self.add_slider_moves::<Bishop>(&mut list, piece_targets);
@@ -52,31 +33,77 @@ impl Position {
 
     #[inline]
     fn add_pawn_moves(&self, list: &mut MoveList, targets: SquareSet) {
-        let us = self.side_to_move();
-
-        let our_pawns = self.pawns() & self.us();
-        let our_king = self.our_king();
-        let their_pieces = self.them();
-        let their_backrank = SquareSet::from(self.their_backrank());
-
-        for from in our_pawns & !self.pinned() {
-            let moves = SquareSet::pawn_pushes(us, from, self.occupied())
-                | (SquareSet::pawn_attacks(us, from) & their_pieces);
-            add_moves(list, from, moves & targets & !their_backrank);
-            add_promotions(list, from, moves & targets & their_backrank);
-        }
+        self.add_safe_pawn_moves(list, targets);
 
         if !self.is_in_check() {
-            for from in our_pawns & self.pinned() {
+            let pinned_pawns = self.pawns() & self.us() & self.pinned();
+            if pinned_pawns.is_empty() {
+                return;
+            }
+            let our_king = self.our_king();
+            let their_pieces = self.them();
+            let their_backrank = SquareSet::from(self.their_backrank());
+
+            for from in pinned_pawns {
                 let targets = targets & SquareSet::ray(from, our_king);
-                let moves = SquareSet::pawn_pushes(us, from, self.occupied())
-                    | (SquareSet::pawn_attacks(us, from) & their_pieces);
+                let moves = SquareSet::pawn_pushes(self.side_to_move(), from, self.occupied())
+                    | (SquareSet::pawn_attacks(self.side_to_move(), from) & their_pieces);
                 add_moves(list, from, moves & targets & !their_backrank);
                 add_promotions(list, from, moves & targets & their_backrank);
             }
         }
+    }
 
-        self.add_en_passant(list, targets);
+    #[inline]
+    fn add_safe_pawn_moves(&self, list: &mut MoveList, targets: SquareSet) {
+        let our_pawns = self.pawns() & self.us() & !self.pinned();
+        let their_backrank = SquareSet::from(self.their_backrank());
+        let (pushes, from_offset) = match self.side_to_move() {
+            Color::White => (our_pawns.shift_up(1) & !self.occupied(), -8),
+            Color::Black => (our_pawns.shift_down(1) & !self.occupied(), 8),
+        };
+
+        add_pawn_moves(list, from_offset, pushes & targets & !their_backrank);
+        add_pawn_promotions(list, from_offset, pushes & targets & their_backrank);
+
+        let (double_pushes, from_offset) = match self.side_to_move() {
+            Color::White => (pushes.shift_up(1) & !self.occupied(), -16),
+            Color::Black => (pushes.shift_down(1) & !self.occupied(), 16),
+        };
+        let double_pushes = double_pushes & Rank::fourth_for(self.side_to_move()).into();
+
+        add_pawn_moves(list, from_offset, double_pushes & targets);
+
+        let (forward, left_from_offset, right_from_offset) = match self.side_to_move() {
+            Color::White => (our_pawns.shift_up(1), -7, -9),
+            Color::Black => (our_pawns.shift_down(1), 9, 7),
+        };
+        let (left_captures, right_captures) = (
+            forward.shift_left() & self.them(),
+            forward.shift_right() & self.them(),
+        );
+
+        add_pawn_moves(
+            list,
+            left_from_offset,
+            left_captures & targets & !their_backrank,
+        );
+        add_pawn_promotions(
+            list,
+            left_from_offset,
+            left_captures & targets & their_backrank,
+        );
+
+        add_pawn_moves(
+            list,
+            right_from_offset,
+            right_captures & targets & !their_backrank,
+        );
+        add_pawn_promotions(
+            list,
+            right_from_offset,
+            right_captures & targets & their_backrank,
+        );
     }
 
     #[inline]
@@ -84,14 +111,14 @@ impl Position {
         if let Some(ep_square) = self.en_passant_square() {
             let them = !self.side_to_move();
             let king = self.our_king();
-            let captured = ep_square.with_rank(Rank::fourth_for(them));
+            let target = ep_square.with_rank(Rank::fourth_for(them));
             let diagonal_attackers = (self.queens() | self.bishops()) & self.them();
             let orthogonal_attackers = (self.queens() | self.rooks()) & self.them();
 
             let attackers = self.pawns() & self.us() & SquareSet::pawn_attacks(them, ep_square);
             for from in attackers {
                 let blockers_after_move =
-                    self.occupied() ^ from.into() ^ captured.into() ^ ep_square.into();
+                    self.occupied() ^ from.into() ^ target.into() ^ ep_square.into();
 
                 let king_attackers_after_move =
                     SquareSet::bishop_moves(king, blockers_after_move) & diagonal_attackers;
@@ -105,12 +132,8 @@ impl Position {
                     continue;
                 }
 
-                if targets.contains(captured) {
-                    list.push(Move {
-                        from,
-                        to: ep_square,
-                        promotion: None,
-                    });
+                if targets.contains(ep_square) || targets.contains(target) {
+                    list.push(Move::new_en_passant(from, ep_square, target));
                 }
             }
         }
@@ -149,32 +172,41 @@ impl Position {
     fn add_king_moves(&self, list: &mut MoveList, targets: SquareSet) {
         let king = self.our_king();
         let danger = self.danger_squares();
-        let mut moves = SquareSet::king_moves(king) & !self.us() & !danger;
+
+        add_moves(
+            list,
+            king,
+            SquareSet::king_moves(king) & !self.us() & !danger & targets,
+        );
 
         if !self.is_in_check() {
             let castling = self.our_castling();
             let backrank = self.our_backrank();
-            if let Some(king_side_rook) = castling.king_side {
-                if self.can_castle(danger, File::G, king_side_rook, File::F) {
-                    let file = match self.variant() {
-                        Variant::Standard => File::G,
-                        Variant::Chess960 => king_side_rook,
-                    };
-                    moves |= Square::new(file, backrank).into();
+            if let Some(rook) = castling.king_side {
+                if self.can_castle(danger, File::G, rook, File::F) {
+                    let king_to = Square::new(File::G, backrank);
+                    if targets.contains(king_to) {
+                        list.push(Move::new_castles(
+                            king,
+                            king_to,
+                            Square::new(rook, backrank),
+                        ));
+                    }
                 }
             }
-            if let Some(queen_side_rook) = castling.queen_side {
-                if self.can_castle(danger, File::C, queen_side_rook, File::D) {
-                    let file = match self.variant() {
-                        Variant::Standard => File::C,
-                        Variant::Chess960 => queen_side_rook,
-                    };
-                    moves |= Square::new(file, backrank).into();
+            if let Some(rook) = castling.queen_side {
+                if self.can_castle(danger, File::C, rook, File::D) {
+                    let king_to = Square::new(File::C, backrank);
+                    if targets.contains(king_to) {
+                        list.push(Move::new_castles(
+                            king,
+                            king_to,
+                            Square::new(rook, backrank),
+                        ));
+                    }
                 }
             }
         }
-
-        add_moves(list, king, moves & targets);
     }
 
     #[inline]
@@ -235,37 +267,51 @@ impl Position {
 }
 
 #[inline]
+fn add_pawn_moves(list: &mut MoveList, from_offset: i32, moves: SquareSet) {
+    for to in moves {
+        let from = unsafe { to.add_unchecked(from_offset) };
+        list.push(Move::new_normal(from, to));
+    }
+}
+
+#[inline]
+fn add_pawn_promotions(list: &mut MoveList, from_offset: i32, moves: SquareSet) {
+    for to in moves {
+        let from = unsafe { to.add_unchecked(from_offset) };
+        add_promotion_pieces(list, from, to);
+    }
+}
+
+#[inline]
+fn add_promotion_pieces(list: &mut MoveList, from: Square, to: Square) {
+    list.push(Move::new_promotion(from, to, Piece::Queen));
+    list.push(Move::new_promotion(from, to, Piece::Rook));
+    list.push(Move::new_promotion(from, to, Piece::Knight));
+    list.push(Move::new_promotion(from, to, Piece::Bishop));
+}
+
+#[inline]
 fn add_promotions(list: &mut MoveList, from: Square, moves: SquareSet) {
     for to in moves {
-        for piece in [Piece::Queen, Piece::Rook, Piece::Knight, Piece::Bishop] {
-            list.push(Move {
-                from,
-                to,
-                promotion: Some(piece),
-            })
-        }
+        add_promotion_pieces(list, from, to);
     }
 }
 
 #[inline]
 fn add_moves(list: &mut MoveList, from: Square, moves: SquareSet) {
     for to in moves {
-        list.push(Move {
-            from,
-            to,
-            promotion: None,
-        })
+        list.push(Move::new_normal(from, to))
     }
-}
-
-trait Slider {
-    const PIECE: Piece;
-    fn moves(square: Square, occupied: SquareSet) -> SquareSet;
 }
 
 struct Queen;
 struct Rook;
 struct Bishop;
+
+trait Slider {
+    const PIECE: Piece;
+    fn moves(square: Square, occupied: SquareSet) -> SquareSet;
+}
 
 impl Slider for Bishop {
     const PIECE: Piece = Piece::Bishop;

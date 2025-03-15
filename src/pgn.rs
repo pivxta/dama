@@ -6,7 +6,7 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::{Color, Outcome, San, SanParseError};
+use crate::{Color, Outcome, SanMove, SanParseError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ControlFlow {
@@ -36,7 +36,11 @@ pub trait Visitor {
         ControlFlow::Continue
     }
 
-    fn visit_move(&mut self, _number: Option<u32>, _mv: San) -> result::Result<(), Self::Error> {
+    fn visit_move(
+        &mut self,
+        _number: Option<u32>,
+        _mv: SanMove,
+    ) -> result::Result<(), Self::Error> {
         Ok(())
     }
     fn visit_annotation(&mut self, _annotation: Annotation) -> result::Result<(), Self::Error> {
@@ -504,7 +508,7 @@ where
         Ok(Some(Annotation { id }))
     }
 
-    fn parse_move(&mut self, c: u8) -> ParseResult<San> {
+    fn parse_move(&mut self, c: u8) -> ParseResult<SanMove> {
         if !is_symbol(c) {
             return Err(self.error_msg(format!(
                 "expected SAN move, found character '{}'",
@@ -517,7 +521,7 @@ where
         self.take_while(is_symbol)?;
         str::from_utf8(&self.scratch)
             .unwrap()
-            .parse::<San>()
+            .parse::<SanMove>()
             .map_err(|err| self.error(ParseErrorKind::InvalidMove(err)))
     }
 
@@ -669,9 +673,8 @@ impl<E> From<ParseError> for Error<E> {
 mod tests {
     use crate::{
         pgn::{self, ControlFlow, Reader, Visitor},
-        Outcome, Position, San,
+        Outcome, Position, SanMove, Color
     };
-    use dama_core::color::Color;
 
     #[test]
     fn pgn_game() {
@@ -745,9 +748,9 @@ already up material and with the safer king. White resigns.} 0-1
                 Ok(())
             }
 
-            fn visit_move(&mut self, _number: Option<u32>, mv: San) -> anyhow::Result<()> {
+            fn visit_move(&mut self, _number: Option<u32>, mv: SanMove) -> anyhow::Result<()> {
                 if self.variation == 0 {
-                    self.position.play_san(&mv)?;
+                    self.position.play(&mv)?;
                 }
                 Ok(())
             }
@@ -917,8 +920,8 @@ already up material and with the safer king. White resigns.} 0-1
                 }
             }
 
-            fn visit_move(&mut self, _number: Option<u32>, mv: San) -> anyhow::Result<()> {
-                self.position.play_san(&mv)?;
+            fn visit_move(&mut self, _number: Option<u32>, mv: SanMove) -> anyhow::Result<()> {
+                self.position.play(&mv)?;
                 Ok(())
             }
 

@@ -99,7 +99,7 @@ impl SquareSet {
     }
 
     #[inline]
-    const fn first(self) -> Option<Square> {
+    pub const fn first(self) -> Option<Square> {
         if self.is_empty() {
             return None;
         }

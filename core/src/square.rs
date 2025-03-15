@@ -88,6 +88,13 @@ impl Square {
     }
 
     #[inline]
+    pub fn distance(self, other: Square) -> u32 {
+        self.file()
+            .distance(other.file())
+            .max(self.rank().distance(other.rank()))
+    }
+
+    #[inline]
     pub fn file(self) -> File {
         unsafe { File::from_index_unchecked(self as usize % 8) }
     }
@@ -114,6 +121,11 @@ impl Square {
             self.rank().offset_by(rank_offset)?,
         ))
     }
+
+    #[inline]
+    pub unsafe fn add_unchecked(self, offset: i32) -> Self {
+        unsafe { Self::from_index_unchecked((self as i32 + offset as i32) as usize) }
+    }
 }
 
 impl File {
@@ -138,6 +150,11 @@ impl File {
     #[inline]
     pub const unsafe fn from_index_unchecked(index: usize) -> Self {
         mem::transmute(index as u8)
+    }
+
+    #[inline]
+    pub const fn distance(self, other: Self) -> u32 {
+        u32::abs_diff(self as u32, other as u32)
     }
 
     #[inline]
@@ -199,6 +216,11 @@ impl Rank {
         sixth_for, Sixth, Third,
         seventh_for, Seventh, Second,
         eighth_for, Eighth, First
+    }
+
+    #[inline]
+    pub const fn distance(self, other: Self) -> u32 {
+        u32::abs_diff(self as u32, other as u32)
     }
 
     #[inline]

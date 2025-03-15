@@ -20,10 +20,7 @@ dama-core = { path = "core" }
 arrayvec = "0.7.6"
 
 [profile.dev]
-opt-level = 2
-
-[profile.release]
-debug = true
+opt-level = 1
 
 [dev-dependencies]
 rayon = "1.10.0"

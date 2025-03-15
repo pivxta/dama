@@ -7,6 +7,7 @@ pub mod pgn;
 pub mod position;
 pub mod san;
 mod squaresets;
+mod uci;
 
 pub use dama_core::{
     castling::{Castling, CastlingSide},
@@ -18,8 +19,9 @@ pub use dama_core::{
 pub use fen::{Fen, FenError, FenParseError, FormattedFen};
 pub use game::Outcome;
 pub use movegen::{MoveList, MAX_LEGAL_MOVES};
-pub use mv::{Move, MoveParseError};
+pub use mv::{Move, MoveKind, ToMove};
 pub use perft::perft;
 pub use position::{IllegalMoveError, InvalidPositionError, Pieces, Position, Variant};
-pub use san::{San, SanError, SanParseError};
+pub use san::{SanError, SanMove, SanParseError};
 pub use squaresets::SquareSets;
+pub use uci::{UciMove, UciMoveParseError};

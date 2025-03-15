@@ -518,7 +518,7 @@ mod tests {
 
     use crate::{
         fen::Format,
-        Castling, Color, Fen, FenParseError, Piece,
+        Castling, Color, Fen, FenParseError, Move, Piece,
         Rank::{self, *},
         Square::{self, *},
         SquareSet,
@@ -530,15 +530,15 @@ mod tests {
         let mut pos =
             Position::from_fen("n1rnbbk1/p1ppppp1/qr6/1p5p/1P5P/1RQ5/P1PPPPP1/N1RNBBK1 w Qq - 6 7")
                 .unwrap();
-        
-        pos.play_unchecked(&"b3b1".parse().unwrap());
+
+        pos.play_unchecked(&Move::new_normal(B3, B1));
 
         assert_eq!(
             pos.fen().to_string(),
             "n1rnbbk1/p1ppppp1/qr6/1p5p/1P5P/2Q5/P1PPPPP1/NRRNBBK1 b Cq - 7 7"
         );
 
-        pos.play_unchecked(&"b6b8".parse().unwrap());
+        pos.play_unchecked(&Move::new_normal(B6, B8));
 
         assert_eq!(
             pos.fen().to_string(),
@@ -560,10 +560,10 @@ mod tests {
     #[test]
     fn xfen_enpassant() {
         use crate::Position;
-        let mut pos = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-            .unwrap();
-        
-        pos.play_unchecked(&"e2e4".parse().unwrap());
+        let mut pos =
+            Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+
+        pos.play_unchecked(&Move::new_normal(E2, E4));
 
         assert_eq!(
             pos.fen().format(Format::XFen).to_string(),

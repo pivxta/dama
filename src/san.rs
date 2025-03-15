@@ -2,16 +2,19 @@ use core::fmt;
 use std::str::FromStr;
 use thiserror::Error;
 
-use crate::{CastlingSide, File, Move, Piece, Position, Rank, Square, Variant};
+use crate::{
+    CastlingSide, File, Move, MoveKind, Piece, Position, 
+    Rank, Color, SquareSet, Square, SquareSets, ToMove
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct San {
-    pub kind: Kind,
+pub struct SanMove {
+    pub kind: SanKind,
     pub postfix: Option<Postfix>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kind {
+pub enum SanKind {
     Simple {
         piece: Piece,
         from_file: Option<File>,
@@ -43,26 +46,46 @@ pub enum SanError {
 #[error("invalid SAN move.")]
 pub struct SanParseError;
 
-impl San {
+impl SanMove {
     #[inline]
     pub fn moved_piece(&self) -> Piece {
         match self.kind {
-            Kind::Castling(_) => Piece::King,
-            Kind::Simple { piece, .. } => piece,
+            SanKind::Castling(_) => Piece::King,
+            SanKind::Simple { piece, .. } => piece,
         }
     }
 
     #[inline]
-    pub fn to_move(&self, position: &Position) -> Result<Move, SanError> {
+    pub fn is_capture(&self) -> bool {
         match self.kind {
-            Kind::Castling(side) => {
+            SanKind::Simple { is_capture, .. } => is_capture,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn promotion(&self) -> Option<Piece> {
+        match self.kind {
+            SanKind::Simple { promotion, .. } => promotion,
+            _ => None,
+        }
+    }
+}
+
+impl ToMove for SanMove {
+    type Error = SanError;
+
+    #[inline]
+    fn to_move(&self, position: &Position) -> Result<Move, SanError> {
+        match self.kind {
+            SanKind::Castling(side) => {
                 let mv = castling_move(position, side)?;
                 if !position.is_legal(&mv) {
                     return Err(SanError::IllegalMove);
                 }
                 Ok(mv)
             }
-            Kind::Simple {
+            SanKind::Simple {
                 piece,
                 from_file,
                 from_rank,
@@ -70,30 +93,55 @@ impl San {
                 to,
                 promotion,
             } => {
-                let mut candidates = position.legal_moves_for(piece);
-                candidates.retain(|mv| {
-                    mv.to == to
-                        && mv.promotion == promotion
-                        && (from_file.is_none() || from_file == Some(mv.from.file()))
-                        && (from_rank.is_none() || from_rank == Some(mv.from.rank()))
-                });
+                let us = position.side_to_move();
+                let them = !position.side_to_move();
+                let mut candidates = position.pieces(piece) & position.us();
 
-                if candidates.len() > 1 {
+                candidates &= match piece {
+                    Piece::Pawn if is_capture => SquareSet::pawn_attacks(them, to),
+                    Piece::Pawn => reverse_pawn_push(us, to, position.occupied()),
+                    _ => piece_moves(piece, to, position.occupied())
+                };
+
+                if let Some(from_file) = from_file {
+                    candidates &= from_file.into();
+                }
+
+                if let Some(from_rank) = from_rank {
+                    candidates &= from_rank.into();
+                }
+
+                if candidates.count() > 1 {
                     return Err(SanError::AmbiguousMove);
                 }
 
-                let mv = candidates.first().ok_or(SanError::IllegalMove)?;
-                if is_capture != position.is_capture(mv) {
+                let from = candidates.first().ok_or(SanError::IllegalMove)?;
+                let (mv, is_move_capture) = 
+                    if piece == Piece::Pawn && position.en_passant_square() == Some(to) {
+                        (Move::new_en_passant(from, to, position.en_passant_target().unwrap()), true)
+                    } else {
+                        (Move {
+                            kind: MoveKind::Normal { promotion },
+                            from,
+                            to
+                        }, position.piece_at(to).is_some())
+                    };
+
+                if is_capture != is_move_capture {
                     return Err(SanError::InvalidNotation);
                 }
 
-                Ok(*mv)
+                if !position.is_legal(&mv) {
+                    return Err(SanError::IllegalMove);
+                }
+
+                Ok(mv)
             }
         }
     }
 }
 
-impl FromStr for San {
+impl FromStr for SanMove {
     type Err = SanParseError;
     fn from_str(s: &str) -> Result<Self, SanParseError> {
         if s.is_empty() {
@@ -119,8 +167,8 @@ impl FromStr for San {
                 return Err(SanParseError);
             };
 
-            return Ok(San {
-                kind: Kind::Castling(side),
+            return Ok(SanMove {
+                kind: SanKind::Castling(side),
                 postfix,
             });
         }
@@ -161,8 +209,8 @@ impl FromStr for San {
             return Err(SanParseError);
         }
 
-        Ok(San {
-            kind: Kind::Simple {
+        Ok(SanMove {
+            kind: SanKind::Simple {
                 piece,
                 is_capture,
                 from_file,
@@ -184,10 +232,10 @@ impl fmt::Display for Postfix {
     }
 }
 
-impl fmt::Display for San {
+impl fmt::Display for SanMove {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.kind {
-            Kind::Simple {
+            SanKind::Simple {
                 piece,
                 from_file,
                 from_rank,
@@ -210,7 +258,7 @@ impl fmt::Display for San {
                     write!(f, "={}", piece_to_notation(promotion))?;
                 }
             }
-            Kind::Castling(side) => {
+            SanKind::Castling(side) => {
                 write!(
                     f,
                     "{}",
@@ -264,25 +312,56 @@ fn castling_move(position: &Position, side: CastlingSide) -> Result<Move, SanErr
     use SanError::*;
     let from = position.our_king();
     let castling = position.our_castling();
-    let to = match (position.variant(), side) {
-        (Variant::Standard, CastlingSide::King) => File::G,
-        (Variant::Standard, CastlingSide::Queen) => File::C,
-        (Variant::Chess960, CastlingSide::King) => castling.king_side.ok_or(IllegalMove)?,
-        (Variant::Chess960, CastlingSide::Queen) => castling.queen_side.ok_or(IllegalMove)?,
+    let backrank = position.our_backrank();
+    let to = match side {
+        CastlingSide::King => Square::new(File::G, backrank),
+        CastlingSide::Queen => Square::new(File::C, backrank),
     };
-    let to = Square::new(to, position.our_backrank());
+    let rook = match side {
+        CastlingSide::King => Square::new(castling.king_side.ok_or(IllegalMove)?, backrank),
+        CastlingSide::Queen => Square::new(castling.queen_side.ok_or(IllegalMove)?, backrank),
+    };
     Ok(Move {
         from,
         to,
-        promotion: None,
+        kind: MoveKind::Castles { rook },
     })
+}
+
+#[inline]
+fn piece_moves(piece: Piece, square: Square, occupied: SquareSet) -> SquareSet {
+    match piece {
+        Piece::Knight => SquareSet::knight_moves(square),
+        Piece::King => SquareSet::king_moves(square),
+        Piece::Bishop => SquareSet::bishop_moves(square, occupied),
+        Piece::Rook => SquareSet::rook_moves(square, occupied),
+        Piece::Queen => SquareSet::queen_moves(square, occupied),
+        _ => SquareSet::default(),
+    }
+}
+
+#[inline]
+fn reverse_pawn_push(color: Color, square: Square, occupied: SquareSet) -> SquareSet {
+    let pawn = SquareSet::from(square);
+    let single_push = match color {
+        Color::Black => pawn.shift_up(1) & occupied,
+        Color::White => pawn.shift_down(1) & occupied,
+    };
+    if !single_push.is_empty() || square.rank() != Rank::fourth_for(color) {
+        single_push
+    } else {
+        match color {
+            Color::Black => pawn.shift_up(2) & occupied,
+            Color::White => pawn.shift_down(2) & occupied,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        san::{Kind, Postfix},
-        CastlingSide, File, Piece, Rank, San,
+        san::{Postfix, SanKind},
+        CastlingSide, File, Piece, Rank, SanMove,
         Square::*,
     };
 
@@ -290,8 +369,8 @@ mod tests {
     fn san_pawn() {
         check_san(
             "e4",
-            San {
-                kind: Kind::Simple {
+            SanMove {
+                kind: SanKind::Simple {
                     piece: Piece::Pawn,
                     from_file: None,
                     from_rank: None,
@@ -304,8 +383,8 @@ mod tests {
         );
         check_san(
             "exd5",
-            San {
-                kind: Kind::Simple {
+            SanMove {
+                kind: SanKind::Simple {
                     piece: Piece::Pawn,
                     from_file: Some(File::E),
                     from_rank: None,
@@ -318,8 +397,8 @@ mod tests {
         );
         check_san(
             "fxg8=Q",
-            San {
-                kind: Kind::Simple {
+            SanMove {
+                kind: SanKind::Simple {
                     piece: Piece::Pawn,
                     from_file: Some(File::F),
                     from_rank: None,
@@ -332,8 +411,8 @@ mod tests {
         );
         check_san(
             "f6#",
-            San {
-                kind: Kind::Simple {
+            SanMove {
+                kind: SanKind::Simple {
                     piece: Piece::Pawn,
                     from_file: None,
                     from_rank: None,
@@ -346,8 +425,8 @@ mod tests {
         );
         check_san(
             "bxc4+",
-            San {
-                kind: Kind::Simple {
+            SanMove {
+                kind: SanKind::Simple {
                     piece: Piece::Pawn,
                     from_file: Some(File::B),
                     from_rank: None,
@@ -364,29 +443,29 @@ mod tests {
     fn san_castle() {
         check_san(
             "O-O",
-            San {
-                kind: Kind::Castling(CastlingSide::King),
+            SanMove {
+                kind: SanKind::Castling(CastlingSide::King),
                 postfix: None,
             },
         );
         check_san(
             "O-O-O",
-            San {
-                kind: Kind::Castling(CastlingSide::Queen),
+            SanMove {
+                kind: SanKind::Castling(CastlingSide::Queen),
                 postfix: None,
             },
         );
         check_san(
             "O-O-O+",
-            San {
-                kind: Kind::Castling(CastlingSide::Queen),
+            SanMove {
+                kind: SanKind::Castling(CastlingSide::Queen),
                 postfix: Some(Postfix::Check),
             },
         );
         check_san(
             "O-O#",
-            San {
-                kind: Kind::Castling(CastlingSide::King),
+            SanMove {
+                kind: SanKind::Castling(CastlingSide::King),
                 postfix: Some(Postfix::Checkmate),
             },
         );
@@ -396,8 +475,8 @@ mod tests {
     fn san_pieces() {
         check_san(
             "N1d2",
-            San {
-                kind: Kind::Simple {
+            SanMove {
+                kind: SanKind::Simple {
                     piece: Piece::Knight,
                     from_file: None,
                     from_rank: Some(Rank::First),
@@ -410,8 +489,8 @@ mod tests {
         );
         check_san(
             "Rgxg7#",
-            San {
-                kind: Kind::Simple {
+            SanMove {
+                kind: SanKind::Simple {
                     piece: Piece::Rook,
                     from_file: Some(File::G),
                     from_rank: None,
@@ -424,7 +503,7 @@ mod tests {
         );
     }
 
-    fn check_san(str: &str, san: San) {
+    fn check_san(str: &str, san: SanMove) {
         assert_eq!(str.parse(), Ok(san));
         assert_eq!(format!("{}", san), str);
     }
