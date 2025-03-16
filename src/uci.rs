@@ -2,8 +2,8 @@ use core::fmt;
 use std::str::FromStr;
 
 use crate::{
-    IllegalMoveError, Move, MoveKind, Piece, PieceParseError, Position, Square, SquareParseError,
-    ToMove, Variant, File
+    File, IllegalMoveError, Move, MoveKind, Piece, PieceParseError, Position, Square,
+    SquareParseError, ToMove, Variant,
 };
 use thiserror::Error;
 
@@ -86,7 +86,7 @@ impl ToMove for UciMove {
             } else {
                 Move::new_normal(self.from, self.to)
             }
-        } else if moved == Piece::Pawn && position.en_passant_square() == Some(self.to) {
+        } else if moved == Piece::Pawn && position.en_passant() == Some(self.to) {
             Move::new_en_passant(self.from, self.to, position.en_passant_target().unwrap())
         } else {
             Move::new_normal(self.from, self.to)

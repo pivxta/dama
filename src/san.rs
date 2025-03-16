@@ -3,8 +3,8 @@ use std::str::FromStr;
 use thiserror::Error;
 
 use crate::{
-    CastlingSide, File, Move, MoveKind, Piece, Position, 
-    Rank, Color, SquareSet, Square, SquareSets, ToMove
+    CastlingSide, Color, File, Move, MoveKind, Piece, Position, Rank, Square, SquareSet,
+    SquareSets, ToMove,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,7 +100,7 @@ impl ToMove for SanMove {
                 candidates &= match piece {
                     Piece::Pawn if is_capture => SquareSet::pawn_attacks(them, to),
                     Piece::Pawn => reverse_pawn_push(us, to, position.occupied()),
-                    _ => piece_moves(piece, to, position.occupied())
+                    _ => piece_moves(piece, to, position.occupied()),
                 };
 
                 if let Some(from_file) = from_file {
@@ -116,15 +116,21 @@ impl ToMove for SanMove {
                 }
 
                 let from = candidates.first().ok_or(SanError::IllegalMove)?;
-                let (mv, is_move_capture) = 
-                    if piece == Piece::Pawn && position.en_passant_square() == Some(to) {
-                        (Move::new_en_passant(from, to, position.en_passant_target().unwrap()), true)
+                let (mv, is_move_capture) =
+                    if piece == Piece::Pawn && position.en_passant() == Some(to) {
+                        (
+                            Move::new_en_passant(from, to, position.en_passant_target().unwrap()),
+                            true,
+                        )
                     } else {
-                        (Move {
-                            kind: MoveKind::Normal { promotion },
-                            from,
-                            to
-                        }, position.piece_at(to).is_some())
+                        (
+                            Move {
+                                kind: MoveKind::Normal { promotion },
+                                from,
+                                to,
+                            },
+                            position.piece_at(to).is_some(),
+                        )
                     };
 
                 if is_capture != is_move_capture {

@@ -300,9 +300,8 @@ where
 
         loop {
             self.skip_whitespace()?;
-            match self.read_token(&mut variation, visitor)? {
-                Continue(false) => break Ok(()),
-                Continue(true) => {}
+            if let Continue(false) = self.read_token(&mut variation, visitor)? {
+                break Ok(());
             }
         }
     }
@@ -673,7 +672,7 @@ impl<E> From<ParseError> for Error<E> {
 mod tests {
     use crate::{
         pgn::{self, ControlFlow, Reader, Visitor},
-        Outcome, Position, SanMove, Color
+        Color, Outcome, Position, SanMove,
     };
 
     #[test]

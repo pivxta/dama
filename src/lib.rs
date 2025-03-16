@@ -21,7 +21,7 @@ pub use game::Outcome;
 pub use movegen::{MoveList, MAX_LEGAL_MOVES};
 pub use mv::{Move, MoveKind, ToMove};
 pub use perft::perft;
-pub use position::{IllegalMoveError, InvalidPositionError, Pieces, Position, Variant};
+pub use position::{IllegalMoveError, InvalidPositionError, Position, Variant};
 pub use san::{SanError, SanMove, SanParseError};
 pub use squaresets::SquareSets;
 pub use uci::{UciMove, UciMoveParseError};

@@ -4,15 +4,29 @@ use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, N
 use crate::square::{File, Rank, Square};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct SquareSet(pub u64);
+pub struct SquareSet(u64);
 
 impl SquareSet {
-    pub const EMPTY: Self = Self(0);
-    pub const FULL: Self = Self(!0);
+    pub const EMPTY: Self = Self::from_bits(0);
+    pub const FULL: Self = Self::from_bits(!0);
+
+    pub const CORNERS: Self = Self::from_square(Square::A1)
+        .with(Square::H1)
+        .with(Square::A8)
+        .with(Square::H8);
+
     pub const EDGES: Self = Self::from_file(File::A)
         .union(Self::from_file(File::H))
         .union(Self::from_rank(Rank::First))
         .union(Self::from_rank(Rank::Eighth));
+
+    pub const LIGHT_SQUARES: Self = Self::from_bits(0xaaaaaaaaaaaaaaaa);
+    pub const DARK_SQUARES: Self = Self::from_bits(0x5555555555555555);
+
+    #[inline]
+    pub const fn from_bits(bits: u64) -> Self {
+        Self(bits)
+    }
 
     #[inline]
     pub const fn from_square(square: Square) -> Self {
@@ -30,8 +44,61 @@ impl SquareSet {
     }
 
     #[inline]
+    pub const fn files_before(file: File) -> Self {
+        match file {
+            File::A => Self(0),
+            File::B => Self(0x0101010101010101),
+            File::C => Self(0x0303030303030303),
+            File::D => Self(0x0707070707070707),
+            File::E => Self(0x0f0f0f0f0f0f0f0f),
+            File::F => Self(0x1f1f1f1f1f1f1f1f),
+            File::G => Self(0x3f3f3f3f3f3f3f3f),
+            File::H => Self(0x7f7f7f7f7f7f7f7f),
+        }
+    }
+
+    #[inline]
+    pub const fn files_after(file: File) -> Self {
+        match file {
+            File::H => Self(0),
+            File::G => Self(0x8080808080808080),
+            File::F => Self(0xc0c0c0c0c0c0c0c0),
+            File::E => Self(0xe0e0e0e0e0e0e0e0),
+            File::D => Self(0xf0f0f0f0f0f0f0f0),
+            File::C => Self(0xf8f8f8f8f8f8f8f8),
+            File::B => Self(0xfcfcfcfcfcfcfcfc),
+            File::A => Self(0xfefefefefefefefe),
+        }
+    }
+
+    #[inline]
     pub const fn contains(self, square: Square) -> bool {
         self.0 & SquareSet::from_square(square).0 != 0
+    }
+
+    #[inline]
+    pub const fn with(self, square: Square) -> Self {
+        Self(self.0 | SquareSet::from_square(square).0)
+    }
+
+    #[inline]
+    pub const fn without(self, square: Square) -> Self {
+        Self(self.0 & !SquareSet::from_square(square).0)
+    }
+
+    #[inline]
+    pub const fn insert(&mut self, square: Square) {
+        self.0 |= SquareSet::from_square(square).0;
+    }
+
+    #[inline]
+    pub const fn remove(&mut self, square: Square) {
+        self.0 &= !SquareSet::from_square(square).0;
+    }
+
+    #[inline]
+    pub const fn toggle(&mut self, square: Square) {
+        self.0 ^= SquareSet::from_square(square).0;
     }
 
     #[inline]
@@ -57,6 +124,11 @@ impl SquareSet {
     #[inline]
     pub const fn complement(self) -> SquareSet {
         SquareSet(!self.0)
+    }
+
+    #[inline]
+    pub const fn to_bits(self) -> u64 {
+        self.0
     }
 
     #[inline]
@@ -90,12 +162,27 @@ impl SquareSet {
     }
 
     #[inline]
-    pub fn as_square(self) -> Option<Square> {
-        let first = self.first()?;
-        if !(self ^ first.into()).is_empty() {
-            return None;
-        }
-        Some(first)
+    pub const fn flip_vertical(self) -> SquareSet {
+        SquareSet(self.0.swap_bytes())
+    }
+    
+    #[inline]
+    pub const fn flip_horizontal(mut self) -> SquareSet {
+        // https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating#Horizontal
+        const MASK1: u64 = 0x5555555555555555;
+        const MASK2: u64 = 0x3333333333333333;
+        const MASK4: u64 = 0x0f0f0f0f0f0f0f0f;
+
+        self.0 = ((self.0 >> 1) & MASK1) | ((self.0 & MASK1) << 1);
+        self.0 = ((self.0 >> 2) & MASK2) | ((self.0 & MASK2) << 2);
+        self.0 = ((self.0 >> 4) & MASK4) | ((self.0 & MASK4) << 4);
+
+        self
+    }
+
+    #[inline]
+    pub const fn rotate_180(self) -> SquareSet {
+        self.flip_horizontal().flip_vertical()
     }
 
     #[inline]
@@ -104,6 +191,23 @@ impl SquareSet {
             return None;
         }
         Some(unsafe { Square::from_index_unchecked(self.0.trailing_zeros() as usize) })
+    }
+
+    #[inline]
+    pub const fn last(self) -> Option<Square> {
+        if self.is_empty() {
+            return None;
+        }
+        Some(unsafe { Square::from_index_unchecked(63 - self.0.leading_zeros() as usize) })
+    }
+
+    #[inline]
+    pub fn as_square(self) -> Option<Square> {
+        let first = self.first()?;
+        if !(self ^ first.into()).is_empty() {
+            return None;
+        }
+        Some(first)
     }
 
     #[inline]

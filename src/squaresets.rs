@@ -19,22 +19,22 @@ pub trait SquareSets {
 impl SquareSets for SquareSet {
     #[inline]
     fn king_moves(square: Square) -> SquareSet {
-        SquareSet(KING_MOVES[square as usize])
+        SquareSet::from_bits(KING_MOVES[square as usize])
     }
 
     #[inline]
     fn knight_moves(square: Square) -> SquareSet {
-        SquareSet(KNIGHT_MOVES[square as usize])
+        SquareSet::from_bits(KNIGHT_MOVES[square as usize])
     }
 
     #[inline]
     fn bishop_moves(square: Square, occupied: SquareSet) -> SquareSet {
-        SquareSet(SLIDING_TABLE[magic::bishop_table_index(square, occupied)])
+        SquareSet::from_bits(SLIDING_TABLE[magic::bishop_table_index(square, occupied)])
     }
 
     #[inline]
     fn rook_moves(square: Square, occupied: SquareSet) -> SquareSet {
-        SquareSet(SLIDING_TABLE[magic::rook_table_index(square, occupied)])
+        SquareSet::from_bits(SLIDING_TABLE[magic::rook_table_index(square, occupied)])
     }
 
     #[inline]
@@ -45,8 +45,8 @@ impl SquareSets for SquareSet {
     #[inline]
     fn pawn_attacks(color: Color, square: Square) -> SquareSet {
         match color {
-            Color::White => SquareSet(WHITE_PAWN_CAPTURES[square as usize]),
-            Color::Black => SquareSet(BLACK_PAWN_CAPTURES[square as usize]),
+            Color::White => SquareSet::from_bits(WHITE_PAWN_CAPTURES[square as usize]),
+            Color::Black => SquareSet::from_bits(BLACK_PAWN_CAPTURES[square as usize]),
         }
     }
 
@@ -77,12 +77,12 @@ impl SquareSets for SquareSet {
 
     #[inline]
     fn ray(a: Square, b: Square) -> SquareSet {
-        SquareSet(LINE_TABLE[a as usize][b as usize])
+        SquareSet::from_bits(LINE_TABLE[a as usize][b as usize])
     }
 
     #[inline]
     fn between(a: Square, b: Square) -> SquareSet {
-        SquareSet(LINE_BETWEEN_TABLE[a as usize][b as usize])
+        SquareSet::from_bits(LINE_BETWEEN_TABLE[a as usize][b as usize])
     }
 }
 

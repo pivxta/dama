@@ -78,8 +78,29 @@ impl Square {
     }
 
     #[inline]
+    pub fn try_from_index(index: usize) -> Option<Self> {
+        if index < 64 {
+            Some(unsafe { Self::from_index_unchecked(index) })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
     pub const unsafe fn from_index_unchecked(index: usize) -> Self {
         mem::transmute(index as u8)
+    }
+
+    #[inline]
+    pub fn from_ascii(s: &[u8]) -> Result<Self, SquareParseError> {
+        if s.len() != 2 {
+            return Err(SquareParseError);
+        }
+
+        let file: File = File::try_from(s[0] as char).map_err(|_| SquareParseError)?;
+        let rank: Rank = Rank::try_from(s[1] as char).map_err(|_| SquareParseError)?;
+
+        Ok(Square::new(file, rank))
     }
 
     #[inline]
@@ -124,7 +145,7 @@ impl Square {
 
     #[inline]
     pub unsafe fn add_unchecked(self, offset: i32) -> Self {
-        unsafe { Self::from_index_unchecked((self as i32 + offset as i32) as usize) }
+        unsafe { Self::from_index_unchecked((self as i32 + offset) as usize) }
     }
 }
 
@@ -145,6 +166,15 @@ impl File {
     pub fn from_index(index: usize) -> Self {
         assert!(index < 8);
         unsafe { Self::from_index_unchecked(index) }
+    }
+
+    #[inline]
+    pub fn try_from_index(index: usize) -> Option<Self> {
+        if index < 8 {
+            Some(unsafe { Self::from_index_unchecked(index) })
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -196,6 +226,15 @@ impl Rank {
     pub fn from_index(index: usize) -> Self {
         assert!(index < 8);
         unsafe { Self::from_index_unchecked(index) }
+    }
+
+    #[inline]
+    pub fn try_from_index(index: usize) -> Option<Self> {
+        if index < 8 {
+            Some(unsafe { Self::from_index_unchecked(index) })
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -305,14 +344,7 @@ impl FromStr for Square {
     type Err = SquareParseError;
 
     fn from_str(s: &str) -> Result<Self, SquareParseError> {
-        if s.len() != 2 {
-            return Err(SquareParseError);
-        }
-
-        let file: File = s[0..1].parse().map_err(|_| SquareParseError)?;
-        let rank: Rank = s[1..2].parse().map_err(|_| SquareParseError)?;
-
-        Ok(Square::new(file, rank))
+        Square::from_ascii(s.as_bytes())
     }
 }
 
@@ -361,15 +393,6 @@ impl fmt::Display for Square {
 }
 
 pub type BySquare<T> = EnumMap<Square, T>;
-
-#[macro_export]
-macro_rules! by_square {
-    ($($square:ident => $value:expr),*$(,)?) => {
-        enum_map! {
-            $(Square::$square => $value),*
-        }
-    };
-}
 
 #[cfg(test)]
 mod tests {

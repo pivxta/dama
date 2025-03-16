@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
-use dama::{perft, Position, SanMove, ToMove, UciMove};
+use dama::{perft, Fen, Position, SanMove, ToMove, UciMove};
 
 const MOVES: [&str; 116] = [
     "Nf3", "d5", "g3", "c5", "Bg2", "Nc6", "d4", "e6", "O-O", "cxd4", "Nxd4", "Nge7", "c4", "Nxd4",
@@ -30,11 +30,11 @@ fn movegen_bench(c: &mut Criterion) {
             }
         })
     });
-    c.bench_function("perft(3)", |b| {
+    c.bench_function("perft3", |b| {
         let position = Position::new_initial();
         b.iter(|| perft(black_box(&position), 3))
     });
-    c.bench_function("perft(5)", |b| {
+    c.bench_function("perft5", |b| {
         let position = Position::new_initial();
         b.iter(|| perft(black_box(&position), 5))
     });
@@ -60,6 +60,37 @@ fn playmove_bench(c: &mut Criterion) {
             },
             BatchSize::PerIteration,
         )
+    });
+}
+
+fn newpos_bench(c: &mut Criterion) {
+    c.bench_function("new_startpos", |b| b.iter(|| black_box(Position::new_initial())));
+    c.bench_function("new_chess960", |b| b.iter(|| black_box(Position::new_chess960(black_box(304)))));
+}
+
+fn fen_bench(c: &mut Criterion) {
+    c.bench_function("fen", |b| {
+        let fens = [
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "5K2/3b4/1p4kB/1Pp3r1/R2rp3/6p1/5pp1/2n3q1 w - - 0 1",
+            "2k2B2/K7/4pP1b/7r/7R/3PP3/1P5p/1nnb1q2 w - - 0 1",
+            "b1nrkrqb/1p1npppp/p2p4/2p5/5P2/4P2P/PPPP1RP1/BNNRK1QB w Dfd - 1 9",
+            "nnrkbbrq/1pp2p1p/p2pp1p1/2P5/8/8/PP1PPPPP/NNRKBBRQ w Ggc - 0 9",
+            "nqbr1bkr/p1p1ppp1/1p1n4/3pN2p/1P6/8/P1PPPPPP/NQBR1BKR w HDhd - 0 9",
+            "nrqnbrkb/pppp1p2/4p2p/3B2p1/8/1P4P1/PQPPPP1P/NR1NBKR1 w GB - 0 9",
+            "nrbbnk1r/pp2pppq/8/2pp3p/3P2P1/1N6/PPP1PP1P/1RBBNKQR w HBhb - 0 9",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - ",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - ",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8  ",
+            "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10 ",
+        ];
+
+        b.iter(|| {
+            for fen in fens {
+                black_box(black_box(fen).parse::<Fen>().unwrap());
+            }
+        });
     });
 }
 
@@ -127,6 +158,6 @@ fn notation_bench(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = Criterion::default();
-    targets = notation_bench, movegen_bench, playmove_bench
+    targets = notation_bench, newpos_bench, fen_bench, movegen_bench, playmove_bench
 }
 criterion_main!(benches);

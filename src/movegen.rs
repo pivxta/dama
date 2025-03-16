@@ -1,4 +1,4 @@
-use crate::{Color, File, Rank, Move, Piece, Position, Square, SquareSet, SquareSets};
+use crate::{Color, File, Move, Piece, Position, Rank, Square, SquareSet, SquareSets};
 use arrayvec::ArrayVec;
 
 pub const MAX_LEGAL_MOVES: usize = 218;
@@ -108,7 +108,7 @@ impl Position {
 
     #[inline]
     fn add_en_passant(&self, list: &mut MoveList, targets: SquareSet) {
-        if let Some(ep_square) = self.en_passant_square() {
+        if let Some(ep_square) = self.en_passant() {
             let them = !self.side_to_move();
             let king = self.our_king();
             let target = ep_square.with_rank(Rank::fourth_for(them));

@@ -16,8 +16,10 @@ dama-core = { path = "core" }
 
 [dependencies]
 thiserror = { workspace = true }
+enum-map = { workspace = true }
 dama-core = { path = "core" }
 arrayvec = "0.7.6"
+atoi = "2.0.0"
 
 [profile.dev]
 opt-level = 1

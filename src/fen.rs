@@ -1,9 +1,10 @@
 use crate::{
-    position, ByColor, BySquare, Castling, CastlingSide, Color, File, InvalidPositionError, Piece,
-    PieceParseError, Pieces, Position, Rank, Square, SquareParseError, Variant,
+    position::{self, Setup},
+    CastlingSide, Color, File, InvalidPositionError, Piece, PieceParseError, Position, Rank,
+    Square, SquareParseError, SquareSets, Variant,
 };
 use core::fmt;
-use dama_core::enum_map;
+use dama_core::{enum_map, squareset::SquareSet};
 use std::{cmp::Ordering, str::FromStr};
 use thiserror::Error;
 
@@ -72,188 +73,198 @@ impl Fen {
     }
 }
 
-impl position::Setup {
-    pub fn from_fen(fen: &str) -> Result<Self, FenParseError> {
-        Ok(Fen::from_str(fen)?.setup)
+impl Fen {
+    #[inline]
+    pub fn from_ascii(ascii: &[u8]) -> Result<Self, FenParseError> {
+        let mut fen = Fen {
+            setup: Setup::new_empty(),
+        };
+        let mut sections = ascii
+            .split(|c| c.is_ascii_whitespace())
+            .filter(|s| !s.is_empty());
+
+        use FenParseError::*;
+        fen.parse_pieces(sections.next().ok_or(InvalidSectionCount)?)?;
+        fen.parse_side_to_move(sections.next().ok_or(InvalidSectionCount)?)?;
+        fen.parse_castling(sections.next().ok_or(InvalidSectionCount)?)?;
+
+        if let Some(s) = sections.next() {
+            fen.parse_en_passant(s)?;
+        }
+        if let Some(s) = sections.next() {
+            fen.setup
+                .set_halfmove_clock(atoi::atoi(s).ok_or(InvalidHalfmoveClock)?);
+        }
+        if let Some(s) = sections.next() {
+            fen.setup
+                .set_fullmove_number(atoi::atoi(s).ok_or(InvalidFullmoveNumber)?);
+        }
+
+        Ok(fen)
+    }
+
+    fn parse_en_passant(&mut self, s: &[u8]) -> Result<(), FenParseError> {
+        if s == b"-" {
+            return Ok(());
+        }
+        self.setup.set_en_passant(Some(Square::from_ascii(s)?));
+        Ok(())
+    }
+
+    fn parse_castling(&mut self, s: &[u8]) -> Result<(), FenParseError> {
+        if s == b"-" {
+            return Ok(());
+        }
+
+        if s.len() > 4 {
+            return Err(FenParseError::InvalidCastlingRights);
+        }
+
+        let king_file = enum_map! {
+            Color::White => self.king_file(Color::White)?,
+            Color::Black => self.king_file(Color::Black)?,
+        };
+
+        for c in s {
+            let color = if c.is_ascii_uppercase() {
+                Color::White
+            } else {
+                Color::Black
+            };
+            match c.to_ascii_lowercase() {
+                b'k' => {
+                    let rook = self.outermost_rook(color, king_file[color], CastlingSide::King)?;
+                    self.setup.castling[color].king_side = Some(rook);
+                }
+                b'q' => {
+                    let rook = self.outermost_rook(color, king_file[color], CastlingSide::Queen)?;
+                    self.setup.castling[color].queen_side = Some(rook);
+                }
+                c @ b'a'..=b'h' => {
+                    let file = File::try_from(c as char)
+                        .map_err(|_| FenParseError::InvalidCastlingRights)?;
+                    match file.cmp(&king_file[color]) {
+                        Ordering::Less => self.setup.castling[color].queen_side = Some(file),
+                        Ordering::Greater => self.setup.castling[color].king_side = Some(file),
+                        _ => {}
+                    }
+                }
+                _ => return Err(FenParseError::InvalidCastlingRights),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn outermost_rook(
+        &self,
+        color: Color,
+        king_file: File,
+        side: CastlingSide,
+    ) -> Result<File, FenParseError> {
+        let back_rank = SquareSet::from(Rank::back_rank(color));
+
+        match side {
+            CastlingSide::King => {
+                let rook = back_rank
+                    & SquareSet::files_after(king_file)
+                    & self.setup.pieces(Piece::Rook)
+                    & self.setup.colored(color);
+
+                rook.last()
+                    .map(|sq| sq.file())
+                    .ok_or(FenParseError::NoCastlingRookFound(color))
+            }
+            CastlingSide::Queen => {
+                let rook = back_rank
+                    & SquareSet::files_before(king_file)
+                    & self.setup.pieces(Piece::Rook)
+                    & self.setup.colored(color);
+
+                rook.first()
+                    .map(|sq| sq.file())
+                    .ok_or(FenParseError::NoCastlingRookFound(color))
+            }
+        }
+    }
+
+    fn king_file(&self, color: Color) -> Result<File, FenParseError> {
+        self.setup
+            .pieces(Piece::King)
+            .first()
+            .map(|square| square.file())
+            .ok_or(FenParseError::NoKingFound(color))
+    }
+
+    fn parse_side_to_move(&mut self, s: &[u8]) -> Result<(), FenParseError> {
+        self.setup.set_side_to_move(match s {
+            b"w" => Color::White,
+            b"b" => Color::Black,
+            _ => return Err(FenParseError::InvalidSideToMove),
+        });
+        Ok(())
+    }
+
+    fn parse_pieces(&mut self, s: &[u8]) -> Result<(), FenParseError> {
+        let mut rank_index = 0;
+
+        for rank in s.rsplit(|&c| c == b'/') {
+            if rank_index >= 8 {
+                return Err(FenParseError::InvalidRankCount);
+            }
+            self.parse_rank(rank_index, rank)?;
+            rank_index += 1;
+        }
+
+        if rank_index != 8 {
+            return Err(FenParseError::InvalidRankCount);
+        }
+
+        Ok(())
+    }
+
+    fn parse_rank(&mut self, rank_index: usize, s: &[u8]) -> Result<(), FenParseError> {
+        let mut file_index = 0;
+
+        for &ch in s {
+            if file_index >= 8 {
+                return Err(FenParseError::InvalidFileCount);
+            }
+
+            match ch {
+                b'0'..=b'9' => {
+                    file_index += (ch - b'0') as usize;
+                }
+                _ => {
+                    let piece = Piece::try_from(ch as char)?;
+                    let color = if ch.is_ascii_uppercase() {
+                        Color::White
+                    } else {
+                        Color::Black
+                    };
+                    self.setup.put_piece(
+                        Square::from_index(file_index + rank_index * 8),
+                        color,
+                        piece,
+                    );
+                    file_index += 1;
+                }
+            }
+        }
+
+        if file_index != 8 {
+            return Err(FenParseError::InvalidFileCount);
+        }
+
+        Ok(())
     }
 }
 
 impl FromStr for Fen {
     type Err = FenParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut sections = s.split_whitespace();
-
-        use FenParseError::*;
-        let pieces = parse_pieces(sections.next().ok_or(InvalidSectionCount)?)?;
-        let side_to_move = parse_side_to_move(sections.next().ok_or(InvalidSectionCount)?)?;
-        let castling = parse_castling(&pieces, sections.next().ok_or(InvalidSectionCount)?)?;
-        let en_passant = match sections.next() {
-            Some(s) => parse_en_passant(s)?,
-            None => None,
-        };
-        let halfmove_clock: u32 = match sections.next() {
-            Some(s) => s.parse().map_err(|_| InvalidHalfmoveClock)?,
-            None => 0,
-        };
-        let fullmove_number: u32 = match sections.next() {
-            Some(s) => s.parse().map_err(|_| InvalidFullmoveNumber)?,
-            None => 0,
-        };
-
-        Ok(Fen {
-            setup: position::Setup::new_empty()
-                .with_pieces(pieces)
-                .with_side_to_move(side_to_move)
-                .with_castling(Color::White, castling[Color::White])
-                .with_castling(Color::Black, castling[Color::Black])
-                .with_en_passant(en_passant)
-                .with_halfmove_clock(halfmove_clock)
-                .with_fullmove_number(fullmove_number),
-        })
+        Fen::from_ascii(s.as_bytes())
     }
-}
-
-fn parse_en_passant(s: &str) -> Result<Option<Square>, FenParseError> {
-    if s == "-" {
-        return Ok(None);
-    }
-
-    Ok(Some(s.parse()?))
-}
-
-fn parse_castling(pieces: &Pieces, s: &str) -> Result<ByColor<Castling>, FenParseError> {
-    if s == "-" {
-        return Ok(ByColor::from_fn(|_| Castling::NONE));
-    }
-
-    if s.len() > 4 {
-        return Err(FenParseError::InvalidCastlingRights);
-    }
-
-    let king_file = enum_map! {
-        Color::White => king_file(pieces, Color::White)?,
-        Color::Black => king_file(pieces, Color::Black)?,
-    };
-
-    let mut castling: ByColor<Castling> = Default::default();
-    for c in s.chars() {
-        let color = if c.is_ascii_uppercase() {
-            Color::White
-        } else {
-            Color::Black
-        };
-        match c.to_ascii_lowercase() {
-            'k' => {
-                let rook = outermost_rook(pieces, color, CastlingSide::King)?;
-                castling[color].king_side = Some(rook);
-            }
-            'q' => {
-                let rook = outermost_rook(pieces, color, CastlingSide::Queen)?;
-                castling[color].queen_side = Some(rook);
-            }
-            c @ 'a'..='h' => {
-                let file = File::try_from(c).map_err(|_| FenParseError::InvalidCastlingRights)?;
-                match file.cmp(&king_file[color]) {
-                    Ordering::Less => castling[color].queen_side = Some(file),
-                    Ordering::Greater => castling[color].king_side = Some(file),
-                    _ => {}
-                }
-            }
-            _ => return Err(FenParseError::InvalidCastlingRights),
-        }
-    }
-    Ok(castling)
-}
-
-fn outermost_rook(
-    pieces: &Pieces,
-    color: Color,
-    side: CastlingSide,
-) -> Result<File, FenParseError> {
-    match side {
-        CastlingSide::King => pieces
-            .iter()
-            .filter(|(sq, _)| sq.rank() == Rank::back_rank(color))
-            .rev()
-            .take_while(|(_, &p)| p != Some((color, Piece::King)))
-            .find(|(_, &p)| p == Some((color, Piece::Rook)))
-            .map(|(sq, _)| sq.file())
-            .ok_or(FenParseError::NoCastlingRookFound(color)),
-        CastlingSide::Queen => pieces
-            .iter()
-            .filter(|(sq, _)| sq.rank() == Rank::back_rank(color))
-            .take_while(|(_, &p)| p != Some((color, Piece::King)))
-            .find(|(_, &p)| p == Some((color, Piece::Rook)))
-            .map(|(sq, _)| sq.file())
-            .ok_or(FenParseError::NoCastlingRookFound(color)),
-    }
-}
-
-fn king_file(pieces: &Pieces, color: Color) -> Result<File, FenParseError> {
-    pieces
-        .iter()
-        .find(|(_, &p)| p == Some((color, Piece::King)))
-        .map(|(sq, _)| sq.file())
-        .ok_or(FenParseError::NoKingFound(color))
-}
-
-fn parse_side_to_move(s: &str) -> Result<Color, FenParseError> {
-    match s {
-        "w" => Ok(Color::White),
-        "b" => Ok(Color::Black),
-        _ => Err(FenParseError::InvalidSideToMove),
-    }
-}
-
-fn parse_pieces(s: &str) -> Result<Pieces, FenParseError> {
-    let mut pieces = [None; 64];
-    let mut index = 0;
-
-    for (n, rank) in s.rsplit('/').enumerate() {
-        if n >= 8 {
-            return Err(FenParseError::InvalidRankCount);
-        }
-
-        pieces[index..index + 8].copy_from_slice(&parse_rank(rank)?);
-        index += 8;
-    }
-
-    if index != 64 {
-        return Err(FenParseError::InvalidRankCount);
-    }
-
-    Ok(BySquare::from_array(pieces))
-}
-
-fn parse_rank(s: &str) -> Result<[Option<(Color, Piece)>; 8], FenParseError> {
-    let mut rank = [None; 8];
-    let mut index = 0;
-
-    for ch in s.chars() {
-        if index >= 8 {
-            return Err(FenParseError::InvalidFileCount);
-        }
-
-        match ch {
-            '0'..='9' => index += ch.to_digit(10).unwrap() as usize,
-            _ => {
-                let piece = Piece::try_from(ch)?;
-                let color = if ch.is_ascii_uppercase() {
-                    Color::White
-                } else {
-                    Color::Black
-                };
-                rank[index] = Some((color, piece));
-                index += 1;
-            }
-        }
-    }
-
-    if index != 8 {
-        return Err(FenParseError::InvalidFileCount);
-    }
-
-    Ok(rank)
 }
 
 impl fmt::Display for Fen {
@@ -307,13 +318,14 @@ impl Fen {
         let mut empty = 0;
         for file in File::ALL {
             let sq = Square::new(file, rank);
+            let spot = self.setup.color_piece_at(sq);
 
-            if self.setup.pieces[sq].is_some() && empty != 0 {
+            if spot.is_some() && empty != 0 {
                 write!(f, "{}", empty)?;
                 empty = 0;
             }
 
-            match self.setup.pieces[sq] {
+            match spot {
                 Some((Color::White, piece)) => {
                     write!(f, "{}", piece_chars[piece].to_ascii_uppercase())?
                 }
@@ -348,8 +360,11 @@ impl Fen {
             return Ok(());
         }
 
-        self.write_castling_side(Color::White, format, f)?;
-        self.write_castling_side(Color::Black, format, f)?;
+        let wrote_white = self.write_castling_side(Color::White, format, f)?;
+        let wrote_black = self.write_castling_side(Color::Black, format, f)?;
+        if !wrote_white && !wrote_black {
+            write!(f, "-")?;
+        }
 
         write!(f, " ")
     }
@@ -359,88 +374,67 @@ impl Fen {
         color: Color,
         format: Format,
         f: &mut fmt::Formatter,
-    ) -> fmt::Result {
-        let (write_queen_side_file, write_king_side_file) =
-            self.write_castling_files(format, color);
+    ) -> Result<bool, fmt::Error> {
+        if let Some(king) = self.setup.king(color) {
+            let (write_queen_side_file, write_king_side_file) =
+                self.should_write_castling_files(format, king, color);
 
-        let castling = self.setup.castling[color];
-        if let Some(king_side) = castling.king_side {
-            if write_king_side_file {
-                write!(f, "{}", file_char(color, king_side))?;
-            } else {
-                write!(f, "{}", side_char(color, true))?;
+            let castling = self.setup.castling[color];
+            if castling.is_none() {
+                return Ok(false);
             }
-        }
-        if let Some(queen_side) = castling.queen_side {
-            if write_queen_side_file {
-                write!(f, "{}", file_char(color, queen_side))?;
-            } else {
-                write!(f, "{}", side_char(color, false))?;
+
+            if let Some(king_side) = castling.king_side {
+                if write_king_side_file {
+                    write!(f, "{}", file_char(color, king_side))?;
+                } else {
+                    write!(f, "{}", side_char(color, true))?;
+                }
             }
+            if let Some(queen_side) = castling.queen_side {
+                if write_queen_side_file {
+                    write!(f, "{}", file_char(color, queen_side))?;
+                } else {
+                    write!(f, "{}", side_char(color, false))?;
+                }
+            }
+
+            return Ok(true);
         }
 
-        Ok(())
+        Ok(false)
     }
 
-    fn write_castling_files(&self, format: Format, color: Color) -> (bool, bool) {
-        match format {
-            Format::Fen => return (false, false),
-            Format::ShredderFen => return (true, true),
-            _ => {}
-        }
-        let castling = self.setup.castling[color];
-        let pieces = &self.setup.pieces;
-        let king_file = pieces
-            .iter()
-            .find(|(_, &p)| p == Some((color, Piece::King)))
-            .map(|(sq, _)| sq.file())
-            .expect("no king found.");
-        let backrank = Rank::back_rank(color);
-        let backrank_rooks = pieces
-            .iter()
-            .filter(|(sq, &p)| p == Some((color, Piece::Rook)) && sq.rank() == backrank)
-            .map(|(sq, _)| sq.file());
-
-        let mut queen_side = 0;
-        let mut king_side = 0;
-
-        for rook_file in backrank_rooks {
-            if rook_file < king_file
-                && castling.queen_side.is_some()
-                && castling.queen_side.unwrap() > rook_file
-            {
-                queen_side += 1;
-            }
-            if rook_file > king_file
-                && castling.king_side.is_some()
-                && castling.king_side.unwrap() < rook_file
-            {
-                king_side += 1;
-            }
+    fn should_write_castling_files(
+        &self,
+        format: Format,
+        king: Square,
+        color: Color,
+    ) -> (bool, bool) {
+        if format == Format::ShredderFen {
+            return (true, true);
         }
 
-        (queen_side > 0, king_side > 0)
+        let king_file = king.file();
+        let rooks = self.setup.pieces(Piece::Rook)
+            & self.setup.colored(color)
+            & Rank::back_rank(color).into();
+
+        let queen_rooks = rooks & SquareSet::files_before(king_file);
+        let king_rooks = rooks & SquareSet::files_after(king_file);
+
+        (queen_rooks.count() > 1, king_rooks.count() > 1)
     }
 
     fn write_en_passant(&self, format: Format, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.setup.en_passant_square {
+        match self.setup.en_passant {
             Some(sq) => {
                 if format == Format::XFen {
-                    let capture_offset = match self.setup.side_to_move {
-                        Color::White => -1,
-                        Color::Black => 1,
-                    };
+                    let attackers = SquareSet::pawn_attacks(!self.setup.side_to_move, sq)
+                        & self.setup.pieces(Piece::Pawn)
+                        & self.setup.colored(self.setup.side_to_move);
 
-                    let left_attacker = sq
-                        .offset_by(-1, capture_offset)
-                        .and_then(|sq| self.setup.pieces[sq]);
-                    let right_attacker = sq
-                        .offset_by(1, capture_offset)
-                        .and_then(|sq| self.setup.pieces[sq]);
-
-                    if left_attacker != Some((self.setup.side_to_move, Piece::Pawn))
-                        && right_attacker != Some((self.setup.side_to_move, Piece::Pawn))
-                    {
+                    if attackers.is_empty() {
                         write!(f, "- ")?;
                         return Ok(());
                     }
@@ -653,9 +647,9 @@ mod tests {
         assert_eq!(pos.pieces(Piece::Queen), sq(D1) | sq(D8));
         assert_eq!(pos.pieces(Piece::King), sq(E1) | sq(E8));
         assert_eq!(pos.side_to_move(), Color::White);
-        assert_eq!(pos.castling(Color::White), Castling::ALL);
-        assert_eq!(pos.castling(Color::Black), Castling::ALL);
-        assert_eq!(pos.en_passant_square(), None);
+        assert_eq!(pos.castling(Color::White), Castling::ALL_STANDARD);
+        assert_eq!(pos.castling(Color::Black), Castling::ALL_STANDARD);
+        assert_eq!(pos.en_passant(), None);
         assert_eq!(pos.halfmove_clock(), 0);
         assert_eq!(pos.fullmove_number(), 1);
     }
@@ -666,8 +660,14 @@ mod tests {
         let pos =
             Position::from_fen("r1b1k2r/2qnbppp/p2pp3/1p3PP1/3NP3/2N2Q2/PPP4P/2KR1B1R b kq - 0 13")
                 .unwrap();
-        assert_eq!(pos.colored(Color::White), SquareSet(0x00000060182487AC));
-        assert_eq!(pos.colored(Color::Black), SquareSet(0x95FC190200000000));
+        assert_eq!(
+            pos.colored(Color::White),
+            SquareSet::from_bits(0x00000060182487AC)
+        );
+        assert_eq!(
+            pos.colored(Color::Black),
+            SquareSet::from_bits(0x95FC190200000000)
+        );
         #[rustfmt::skip]
         assert_eq!(
             pos.pieces(Piece::Pawn), 
@@ -681,8 +681,8 @@ mod tests {
         assert_eq!(pos.pieces(Piece::King), sq(C1) | sq(E8));
         assert_eq!(pos.side_to_move(), Color::Black);
         assert_eq!(pos.castling(Color::White), Castling::NONE);
-        assert_eq!(pos.castling(Color::Black), Castling::ALL);
-        assert_eq!(pos.en_passant_square(), None);
+        assert_eq!(pos.castling(Color::Black), Castling::ALL_STANDARD);
+        assert_eq!(pos.en_passant(), None);
         assert_eq!(pos.halfmove_clock(), 0);
         assert_eq!(pos.fullmove_number(), 13);
     }
@@ -691,7 +691,7 @@ mod tests {
     fn from_fen_enpassant() {
         let pos =
             Fen::from_str("rnbqkbnr/1pp1pppp/p7/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3").unwrap();
-        assert_eq!(pos.setup.en_passant_square, Some(D6));
+        assert_eq!(pos.setup.en_passant, Some(D6));
     }
 
     fn rank(rank: Rank) -> SquareSet {

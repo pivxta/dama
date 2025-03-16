@@ -47,11 +47,11 @@ fn write_nested_table(
     table: &[[SquareSet; 64]; 64],
 ) -> anyhow::Result<()> {
     writeln!(w, "#[rustfmt::skip]")?;
-    writeln!(w, "const {}: [[u64; 64]; 64] = [", name)?;
+    writeln!(w, "static {}: [[u64; 64]; 64] = [", name)?;
     for row in table.iter() {
         write!(w, "    [")?;
         for &entry in row.iter() {
-            write!(w, "0x{:x}, ", entry.0)?;
+            write!(w, "0x{:x}, ", entry.to_bits())?;
         }
         writeln!(w, "],")?;
     }
@@ -68,7 +68,7 @@ fn write_square_table(
     writeln!(w, "#[rustfmt::skip]")?;
     writeln!(w, "const {}: [u64; {}] = [", name, table.len())?;
     for entry in table.iter() {
-        writeln!(w, "    0x{:x},", entry.0)?;
+        writeln!(w, "    0x{:x},", entry.to_bits())?;
     }
     writeln!(w, "];")?;
     writeln!(w)?;
@@ -83,7 +83,7 @@ fn write_sliding_table(w: &mut impl Write, sliding_table: &[SquareSet]) -> anyho
         sliding_table.len()
     )?;
     for entry in sliding_table.iter() {
-        writeln!(w, "    0x{:x},", entry.0)?;
+        writeln!(w, "    0x{:x},", entry.to_bits())?;
     }
     writeln!(w, "];")?;
     writeln!(w)?;
