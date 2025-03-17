@@ -1,51 +1,131 @@
 use crate::{Color, File, Move, Piece, Position, Rank, Square, SquareSet, SquareSets};
 use arrayvec::ArrayVec;
-
 pub const MAX_LEGAL_MOVES: usize = 218;
 
 pub type MoveList = ArrayVec<Move, MAX_LEGAL_MOVES>;
 
 impl Position {
     pub fn legal_moves(&self) -> MoveList {
-        self.targeted_legal_moves(SquareSet::FULL)
-    }
-
-    #[inline]
-    fn targeted_legal_moves(&self, targets: SquareSet) -> MoveList {
         let mut list = MoveList::new();
 
-        match self.checkers().count() {
-            0 | 1 => {
-                let piece_targets = targets & self.target_squares();
-                self.add_en_passant(&mut list, piece_targets);
-                self.add_pawn_moves(&mut list, piece_targets);
-                self.add_knight_moves(&mut list, piece_targets);
-                self.add_slider_moves::<Bishop>(&mut list, piece_targets);
-                self.add_slider_moves::<Rook>(&mut list, piece_targets);
-                self.add_slider_moves::<Queen>(&mut list, piece_targets);
-                self.add_king_moves(&mut list, targets);
+        if let Some(king) = self.our_king() {
+            match self.checkers().count() {
+                0 | 1 => {
+                    let targets = self.target_squares(king);
+                    self.add_en_passant(&mut list, king);
+                    self.add_pawn_moves(&mut list, king, targets);
+                    self.add_knight_moves(&mut list, targets);
+                    self.add_slider_moves::<Bishop>(&mut list, king, targets);
+                    self.add_slider_moves::<Rook>(&mut list, king, targets);
+                    self.add_slider_moves::<Queen>(&mut list, king, targets);
+                    self.add_king_moves(&mut list, king, SquareSet::ALL);
+                }
+                _ => self.add_king_moves(&mut list, king, SquareSet::ALL),
             }
-            _ => self.add_king_moves(&mut list, targets),
+        }
+
+        list
+    }
+
+    pub fn legal_quiets(&self) -> MoveList {
+        let mut list = MoveList::new();
+
+        if let Some(king) = self.our_king() {
+            match self.checkers().count() {
+                0 | 1 => {
+                    let targets = self.target_squares(king) & !self.them();
+                    self.add_pawn_quiets(&mut list, king, targets);
+                    self.add_knight_moves(&mut list, targets);
+                    self.add_slider_moves::<Bishop>(&mut list, king, targets);
+                    self.add_slider_moves::<Rook>(&mut list, king, targets);
+                    self.add_slider_moves::<Queen>(&mut list, king, targets);
+                    self.add_king_moves(&mut list, king, !self.them());
+                }
+                _ => self.add_king_moves(&mut list, king, !self.them()),
+            }
+        }
+
+        list
+    }
+
+    pub fn legal_captures(&self) -> MoveList {
+        let mut list = MoveList::new();
+
+        if let Some(king) = self.our_king() {
+            match self.checkers().count() {
+                0 | 1 => {
+                    let targets = self.them() & self.target_squares(king);
+                    self.add_en_passant(&mut list, king);
+                    self.add_pawn_captures(&mut list, king, targets);
+                    self.add_knight_moves(&mut list, targets);
+                    self.add_slider_moves::<Bishop>(&mut list, king, targets);
+                    self.add_slider_moves::<Rook>(&mut list, king, targets);
+                    self.add_slider_moves::<Queen>(&mut list, king, targets);
+                    self.add_king_moves(&mut list, king, self.them());
+                }
+                _ => self.add_king_moves(&mut list, king, self.them()),
+            }
         }
 
         list
     }
 
     #[inline]
-    fn add_pawn_moves(&self, list: &mut MoveList, targets: SquareSet) {
-        self.add_safe_pawn_moves(list, targets);
+    fn add_pawn_captures(&self, list: &mut MoveList, king: Square, targets: SquareSet) {
+        self.add_safe_pawn_captures(list, targets);
 
         if !self.is_in_check() {
             let pinned_pawns = self.pawns() & self.us() & self.pinned();
             if pinned_pawns.is_empty() {
                 return;
             }
-            let our_king = self.our_king();
             let their_pieces = self.them();
             let their_backrank = SquareSet::from(self.their_backrank());
 
             for from in pinned_pawns {
-                let targets = targets & SquareSet::ray(from, our_king);
+                let targets = targets & SquareSet::ray(from, king);
+                let moves = SquareSet::pawn_attacks(self.side_to_move(), from) & their_pieces;
+                add_moves(list, from, moves & targets & !their_backrank);
+                add_promotions(list, from, moves & targets & their_backrank);
+            }
+        }
+    }
+
+    #[inline]
+    fn add_pawn_quiets(&self, list: &mut MoveList, king: Square, targets: SquareSet) {
+        self.add_safe_pawn_pushes(list, targets);
+
+        if !self.is_in_check() {
+            let pinned_pawns = self.pawns() & self.us() & self.pinned();
+            if pinned_pawns.is_empty() {
+                return;
+            }
+            let their_backrank = SquareSet::from(self.their_backrank());
+
+            for from in pinned_pawns {
+                let targets = targets & SquareSet::ray(from, king);
+                let moves = SquareSet::pawn_pushes(self.side_to_move(), from, self.occupied());
+                add_moves(list, from, moves & targets & !their_backrank);
+                add_promotions(list, from, moves & targets & their_backrank);
+            }
+        }
+    }
+
+    #[inline]
+    fn add_pawn_moves(&self, list: &mut MoveList, king: Square, targets: SquareSet) {
+        self.add_safe_pawn_pushes(list, targets);
+        self.add_safe_pawn_captures(list, targets);
+
+        if !self.is_in_check() {
+            let pinned_pawns = self.pawns() & self.us() & self.pinned();
+            if pinned_pawns.is_empty() {
+                return;
+            }
+            let their_pieces = self.them();
+            let their_backrank = SquareSet::from(self.their_backrank());
+
+            for from in pinned_pawns {
+                let targets = targets & SquareSet::ray(from, king);
                 let moves = SquareSet::pawn_pushes(self.side_to_move(), from, self.occupied())
                     | (SquareSet::pawn_attacks(self.side_to_move(), from) & their_pieces);
                 add_moves(list, from, moves & targets & !their_backrank);
@@ -55,28 +135,33 @@ impl Position {
     }
 
     #[inline]
-    fn add_safe_pawn_moves(&self, list: &mut MoveList, targets: SquareSet) {
+    fn add_safe_pawn_pushes(&self, list: &mut MoveList, targets: SquareSet) {
         let our_pawns = self.pawns() & self.us() & !self.pinned();
         let their_backrank = SquareSet::from(self.their_backrank());
         let (pushes, from_offset) = match self.side_to_move() {
-            Color::White => (our_pawns.shift_up(1) & !self.occupied(), -8),
-            Color::Black => (our_pawns.shift_down(1) & !self.occupied(), 8),
+            Color::White => (our_pawns.offset_ranks_by(1) & !self.occupied(), -8),
+            Color::Black => (our_pawns.offset_ranks_by(-1) & !self.occupied(), 8),
         };
 
         add_pawn_moves(list, from_offset, pushes & targets & !their_backrank);
         add_pawn_promotions(list, from_offset, pushes & targets & their_backrank);
 
         let (double_pushes, from_offset) = match self.side_to_move() {
-            Color::White => (pushes.shift_up(1) & !self.occupied(), -16),
-            Color::Black => (pushes.shift_down(1) & !self.occupied(), 16),
+            Color::White => (pushes.offset_ranks_by(1) & !self.occupied(), -16),
+            Color::Black => (pushes.offset_ranks_by(-1) & !self.occupied(), 16),
         };
         let double_pushes = double_pushes & Rank::fourth_for(self.side_to_move()).into();
 
         add_pawn_moves(list, from_offset, double_pushes & targets);
+    }
 
+    #[inline]
+    fn add_safe_pawn_captures(&self, list: &mut MoveList, targets: SquareSet) {
+        let our_pawns = self.pawns() & self.us() & !self.pinned();
+        let their_backrank = SquareSet::from(self.their_backrank());
         let (forward, left_from_offset, right_from_offset) = match self.side_to_move() {
-            Color::White => (our_pawns.shift_up(1), -7, -9),
-            Color::Black => (our_pawns.shift_down(1), 9, 7),
+            Color::White => (our_pawns.offset_ranks_by(1), -7, -9),
+            Color::Black => (our_pawns.offset_ranks_by(-1), 9, 7),
         };
         let (left_captures, right_captures) = (
             forward.shift_left() & self.them(),
@@ -107,18 +192,20 @@ impl Position {
     }
 
     #[inline]
-    fn add_en_passant(&self, list: &mut MoveList, targets: SquareSet) {
+    fn add_en_passant(&self, list: &mut MoveList, king: Square) {
         if let Some(ep_square) = self.en_passant() {
             let them = !self.side_to_move();
-            let king = self.our_king();
             let target = ep_square.with_rank(Rank::fourth_for(them));
             let diagonal_attackers = (self.queens() | self.bishops()) & self.them();
             let orthogonal_attackers = (self.queens() | self.rooks()) & self.them();
 
             let attackers = self.pawns() & self.us() & SquareSet::pawn_attacks(them, ep_square);
             for from in attackers {
-                let blockers_after_move =
-                    self.occupied() ^ from.into() ^ target.into() ^ ep_square.into();
+                let blockers_after_move = self
+                    .occupied()
+                    .toggled(from)
+                    .toggled(target)
+                    .toggled(ep_square);
 
                 let king_attackers_after_move =
                     SquareSet::bishop_moves(king, blockers_after_move) & diagonal_attackers;
@@ -132,9 +219,7 @@ impl Position {
                     continue;
                 }
 
-                if targets.contains(ep_square) || targets.contains(target) {
-                    list.push(Move::new_en_passant(from, ep_square, target));
-                }
+                list.push(Move::new_en_passant(from, ep_square, target));
             }
         }
     }
@@ -147,11 +232,10 @@ impl Position {
     }
 
     #[inline]
-    fn add_slider_moves<S>(&self, list: &mut MoveList, targets: SquareSet)
+    fn add_slider_moves<S>(&self, list: &mut MoveList, king: Square, targets: SquareSet)
     where
         S: Slider,
     {
-        let king = self.our_king();
         let occupied = self.occupied();
         let sliders = self.pieces(S::PIECE) & self.us();
 
@@ -169,9 +253,8 @@ impl Position {
     }
 
     #[inline]
-    fn add_king_moves(&self, list: &mut MoveList, targets: SquareSet) {
-        let king = self.our_king();
-        let danger = self.danger_squares();
+    fn add_king_moves(&self, list: &mut MoveList, king: Square, targets: SquareSet) {
+        let danger = self.danger_squares(king);
 
         add_moves(
             list,
@@ -183,7 +266,7 @@ impl Position {
             let castling = self.our_castling();
             let backrank = self.our_backrank();
             if let Some(rook) = castling.king_side {
-                if self.can_castle(danger, File::G, rook, File::F) {
+                if self.can_castle(danger, king, File::G, rook, File::F) {
                     let king_to = Square::new(File::G, backrank);
                     if targets.contains(king_to) {
                         list.push(Move::new_castles(
@@ -195,7 +278,7 @@ impl Position {
                 }
             }
             if let Some(rook) = castling.queen_side {
-                if self.can_castle(danger, File::C, rook, File::D) {
+                if self.can_castle(danger, king, File::C, rook, File::D) {
                     let king_to = Square::new(File::C, backrank);
                     if targets.contains(king_to) {
                         list.push(Move::new_castles(
@@ -210,37 +293,43 @@ impl Position {
     }
 
     #[inline]
-    fn can_castle(&self, danger: SquareSet, king_to: File, rook_from: File, rook_to: File) -> bool {
+    fn can_castle(
+        &self,
+        danger: SquareSet,
+        king_from: Square,
+        king_to: File,
+        rook_from: File,
+        rook_to: File,
+    ) -> bool {
         let backrank = self.our_backrank();
-        let king_from = self.our_king();
         let king_to = Square::new(king_to, backrank);
         let rook_from = Square::new(rook_from, backrank);
         let rook_to = Square::new(rook_to, backrank);
 
         let must_be_safe = SquareSet::between(king_from, king_to) | king_to.into();
         let must_be_empty = (SquareSet::between(rook_from, rook_to)
-            | SquareSet::between(king_from, king_to)
-            | rook_to.into()
-            | king_to.into())
-            & !SquareSet::from(king_from)
-            & !SquareSet::from(rook_from);
+            | SquareSet::between(king_from, king_to))
+        .with(rook_to)
+        .with(king_to)
+        .without(king_from)
+        .without(rook_from);
 
         (must_be_safe & danger).is_empty() && (must_be_empty & self.occupied()).is_empty()
     }
 
     #[inline]
-    fn target_squares(&self) -> SquareSet {
+    fn target_squares(&self, king: Square) -> SquareSet {
         if !self.is_in_check() {
             return !self.us();
         }
 
         let checkers = self.checkers();
-        (checkers | SquareSet::between(checkers.as_square().unwrap(), self.our_king())) & !self.us()
+        (checkers | SquareSet::between(checkers.single().unwrap(), king)) & !self.us()
     }
 
     #[inline]
-    fn danger_squares(&self) -> SquareSet {
-        let occupied = self.occupied() ^ self.our_king().into();
+    fn danger_squares(&self, king: Square) -> SquareSet {
+        let occupied = self.occupied().toggled(king);
         let attacked =
             SquareSet::all_pawn_attacks(!self.side_to_move(), self.pawns() & self.them());
         let attacked = (self.knights() & self.them())
@@ -262,7 +351,11 @@ impl Position {
                 att | SquareSet::queen_moves(sq, occupied)
             });
 
-        attacked | SquareSet::king_moves(self.their_king())
+        if let Some(their_king) = self.their_king() {
+            attacked | SquareSet::king_moves(their_king)
+        } else {
+            attacked
+        }
     }
 }
 
@@ -493,8 +586,14 @@ mod tests {
         if depth == 1 {
             return position.legal_moves().len() as u64;
         }
-        position
-            .legal_moves()
+
+        let legal_moves = position.legal_moves();
+        let quiets = position.legal_quiets();
+        let captures = position.legal_captures();
+
+        assert_eq!(legal_moves.len(), quiets.len() + captures.len());
+
+        legal_moves
             .iter()
             .map(|mv| {
                 let mut child = position.clone();

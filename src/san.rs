@@ -97,48 +97,48 @@ impl ToMove for SanMove {
                 let them = !position.side_to_move();
                 let mut candidates = position.pieces(piece) & position.us();
 
-                candidates &= match piece {
+                candidates.keep(match piece {
                     Piece::Pawn if is_capture => SquareSet::pawn_attacks(them, to),
                     Piece::Pawn => reverse_pawn_push(us, to, position.occupied()),
                     _ => piece_moves(piece, to, position.occupied()),
-                };
+                });
 
                 if let Some(from_file) = from_file {
-                    candidates &= from_file.into();
+                    candidates.keep(from_file.into());
                 }
 
                 if let Some(from_rank) = from_rank {
-                    candidates &= from_rank.into();
+                    candidates.keep(from_rank.into());
                 }
 
-                if candidates.count() > 1 {
+                let mut candidates = candidates.iter().filter_map(|from| {
+                    let mv = if piece == Piece::Pawn && position.en_passant() == Some(to) {
+                        Move::new_en_passant(from, to, position.en_passant_target().unwrap())
+                    } else {
+                        Move {
+                            kind: MoveKind::Normal { promotion },
+                            from,
+                            to,
+                        }
+                    };
+
+                    if position.is_legal(&mv) {
+                        Some(mv)
+                    } else {
+                        None
+                    }
+                });
+
+                let mv = candidates.next().ok_or(SanError::IllegalMove)?;
+                if candidates.next().is_some() {
                     return Err(SanError::AmbiguousMove);
                 }
 
-                let from = candidates.first().ok_or(SanError::IllegalMove)?;
-                let (mv, is_move_capture) =
-                    if piece == Piece::Pawn && position.en_passant() == Some(to) {
-                        (
-                            Move::new_en_passant(from, to, position.en_passant_target().unwrap()),
-                            true,
-                        )
-                    } else {
-                        (
-                            Move {
-                                kind: MoveKind::Normal { promotion },
-                                from,
-                                to,
-                            },
-                            position.piece_at(to).is_some(),
-                        )
-                    };
+                let is_move_capture = position.occupied().contains(to)
+                    || (piece == Piece::Pawn && position.en_passant() == Some(to));
 
                 if is_capture != is_move_capture {
                     return Err(SanError::InvalidNotation);
-                }
-
-                if !position.is_legal(&mv) {
-                    return Err(SanError::IllegalMove);
                 }
 
                 Ok(mv)
@@ -316,7 +316,7 @@ fn piece_to_notation(piece: Piece) -> &'static str {
 #[inline]
 fn castling_move(position: &Position, side: CastlingSide) -> Result<Move, SanError> {
     use SanError::*;
-    let from = position.our_king();
+    let from = position.our_king().ok_or(SanError::IllegalMove)?;
     let castling = position.our_castling();
     let backrank = position.our_backrank();
     let to = match side {
@@ -350,15 +350,15 @@ fn piece_moves(piece: Piece, square: Square, occupied: SquareSet) -> SquareSet {
 fn reverse_pawn_push(color: Color, square: Square, occupied: SquareSet) -> SquareSet {
     let pawn = SquareSet::from(square);
     let single_push = match color {
-        Color::Black => pawn.shift_up(1) & occupied,
-        Color::White => pawn.shift_down(1) & occupied,
+        Color::Black => pawn.offset_ranks_by(1) & occupied,
+        Color::White => pawn.offset_ranks_by(-1) & occupied,
     };
     if !single_push.is_empty() || square.rank() != Rank::fourth_for(color) {
         single_push
     } else {
         match color {
-            Color::Black => pawn.shift_up(2) & occupied,
-            Color::White => pawn.shift_down(2) & occupied,
+            Color::Black => pawn.offset_ranks_by(2) & occupied,
+            Color::White => pawn.offset_ranks_by(-2) & occupied,
         }
     }
 }
@@ -367,7 +367,7 @@ fn reverse_pawn_push(color: Color, square: Square, occupied: SquareSet) -> Squar
 mod tests {
     use crate::{
         san::{Postfix, SanKind},
-        CastlingSide, File, Piece, Rank, SanMove,
+        CastlingSide, File, Piece, Position, Rank, SanMove,
         Square::*,
     };
 
@@ -506,6 +506,19 @@ mod tests {
                 },
                 postfix: Some(Postfix::Checkmate),
             },
+        );
+    }
+
+    #[test]
+    fn san_pseudolegal_ambiguity() {
+        let mut position = Position::from_fen(
+            "r1bqkb1r/ppp2ppp/2npn3/1B2p3/4P3/2NPBNP1/PPP2P1P/R2Q1RK1 b kq - 2 8",
+        )
+        .unwrap();
+        position.play(&"Nd4".parse::<SanMove>().unwrap()).unwrap();
+        assert_eq!(
+            position.fen().to_string(),
+            "r1bqkb1r/ppp2ppp/2np4/1B2p3/3nP3/2NPBNP1/PPP2P1P/R2Q1RK1 w kq - 3 9"
         );
     }
 

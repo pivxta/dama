@@ -56,7 +56,7 @@ fn non_slider(square: Square, offsets: &[(i32, i32)]) -> SquareSet {
     let mut moves = SquareSet::EMPTY;
     for (file_offset, rank_offset) in offsets {
         if let Some(square) = square.offset_by(*file_offset, *rank_offset) {
-            moves |= square.into();
+            moves.insert(square);
         }
     }
     moves
@@ -67,7 +67,7 @@ fn slider(square: Square, occupied: SquareSet, offsets: &[(i32, i32)]) -> Square
     for (file_offset, rank_offset) in offsets {
         let mut current_square = square;
         while let Some(square) = current_square.offset_by(*file_offset, *rank_offset) {
-            moves |= square.into();
+            moves.insert(square);
             if occupied.contains(square) {
                 break;
             }

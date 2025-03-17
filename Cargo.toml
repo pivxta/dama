@@ -24,6 +24,9 @@ atoi = "2.0.0"
 [profile.dev]
 opt-level = 1
 
+[profile.bench]
+lto = true
+
 [dev-dependencies]
 rayon = "1.10.0"
 criterion = "0.5.1"

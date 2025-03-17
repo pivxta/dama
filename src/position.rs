@@ -13,7 +13,7 @@ pub enum Variant {
     Chess960,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq)]
 pub struct Position {
     occupied: SquareSet,
     pieces: ByPiece<SquareSet>,
@@ -57,12 +57,24 @@ pub enum InvalidPositionError {
 }
 
 impl Default for Position {
+    #[inline]
     fn default() -> Self {
         Self::new_initial()
     }
 }
 
+impl PartialEq for Position {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.colors == other.colors
+            && self.pieces == other.pieces 
+            && self.en_passant == other.en_passant
+            && self.side_to_move == other.side_to_move
+    }
+}
+
 impl Position {
+    #[inline]
     pub fn new_initial() -> Self {
         Self {
             pieces: INITIAL_PIECES,
@@ -79,6 +91,7 @@ impl Position {
         }
     }
 
+    #[inline]
     pub fn new_chess960(scharnagl_number: u32) -> Self {
         Self {
             pieces: initial_pieces_chess960(scharnagl_number),
@@ -125,6 +138,30 @@ impl Position {
     }
 
     #[inline]
+    pub fn pseudolegal_en_passant(&self) -> Option<Square> {
+        self.en_passant.filter(|&ep| {
+            let attackers = SquareSet::pawn_attacks(!self.side_to_move, ep)
+                & self.pawns()
+                & self.us();
+
+            !attackers.is_empty()
+        })
+    }
+
+    #[inline]
+    pub fn legal_en_passant(&self) -> Option<Square> {
+        self.en_passant.filter(|&ep| {
+            let target = ep.with_rank(Rank::fifth_for(self.side_to_move));
+            let mut attackers = SquareSet::pawn_attacks(!self.side_to_move, ep)
+                & self.pawns()
+                & self.us();
+
+            attackers.retain(|from| self.is_safe(&Move::new_en_passant(from, ep, target)));
+            !attackers.is_empty()
+        })
+    }
+
+    #[inline]
     pub fn en_passant_target(&self) -> Option<Square> {
         self.en_passant
             .map(|ep| ep.with_rank(Rank::fifth_for(self.side_to_move())))
@@ -138,6 +175,14 @@ impl Position {
     #[inline]
     pub fn fullmove_number(&self) -> u32 {
         self.fullmove_number
+    }
+
+    #[inline]
+    pub fn ply_number(&self) -> u32 {
+        match self.side_to_move() {
+            Color::White => self.fullmove_number * 2,
+            Color::Black => self.fullmove_number * 2 + 1,
+        }
     }
 
     #[inline]
@@ -243,12 +288,12 @@ impl Position {
     }
 
     #[inline]
-    pub fn our_king(&self) -> Square {
+    pub fn our_king(&self) -> Option<Square> {
         self.king(self.side_to_move)
     }
 
     #[inline]
-    pub fn their_king(&self) -> Square {
+    pub fn their_king(&self) -> Option<Square> {
         self.king(!self.side_to_move)
     }
 
@@ -263,10 +308,9 @@ impl Position {
     }
 
     #[inline]
-    pub fn king(&self, color: Color) -> Square {
-        (self.pieces[Piece::King] & self.colors[color])
-            .as_square()
-            .unwrap_or_else(|| panic!("invalid number of {:?} kings in the board", color))
+    pub fn king(&self, color: Color) -> Option<Square> {
+        (self.pieces[Piece::King] & self.colors[color]).single()
+        //.unwrap_or_else(|| panic!("invalid number of {:?} kings in the board", color))
     }
 
     #[inline]
@@ -361,17 +405,17 @@ impl Position {
                 }
 
                 let must_be_empty = (SquareSet::between(rook, rook_to)
-                    | SquareSet::between(mv.from, mv.to)
-                    | rook_to.into()
-                    | king_to.into())
-                    & !SquareSet::from(mv.from)
-                    & !SquareSet::from(rook);
+                    | SquareSet::between(mv.from, mv.to))
+                .with(rook_to)
+                .with(king_to)
+                .without(mv.from)
+                .without(rook);
 
                 if !(must_be_empty & self.occupied()).is_empty() {
                     return false;
                 }
 
-                let must_be_safe = SquareSet::between(mv.from, mv.to) | mv.to.into();
+                let must_be_safe = SquareSet::between(mv.from, mv.to).with(mv.to);
                 for square in must_be_safe {
                     if !(self.attacking(square) & self.them()).is_empty() {
                         return false;
@@ -385,25 +429,32 @@ impl Position {
 
     #[inline]
     pub fn is_safe(&self, mv: &Move) -> bool {
-        let king = self.our_king();
+        if let Some(king) = self.our_king() {
+            match mv.kind {
+                MoveKind::Normal { .. } if self.piece_at(mv.from) == Some(Piece::King) => {
+                    (self.attacking(mv.to) & self.them()).is_empty()
+                }
+                MoveKind::Normal { .. } => {
+                    !self.pinned().contains(mv.from)
+                        || SquareSet::ray(mv.from, king).contains(mv.to)
+                }
+                MoveKind::EnPassant { target } => {
+                    let queens_and_bishops = (self.queens() | self.bishops()) & self.them();
+                    let queens_and_rooks = (self.queens() | self.rooks()) & self.them();
+                    let occupied_after = self
+                        .occupied()
+                        .toggled(mv.from)
+                        .toggled(mv.to)
+                        .toggled(target);
 
-        match mv.kind {
-            MoveKind::Normal { .. } if self.piece_at(mv.from) == Some(Piece::King) => {
-                (self.attacking(mv.to) & self.them()).is_empty()
+                    (SquareSet::bishop_moves(king, occupied_after) & queens_and_bishops).is_empty()
+                        && (SquareSet::rook_moves(king, occupied_after) & queens_and_rooks)
+                            .is_empty()
+                }
+                _ => true,
             }
-            MoveKind::Normal { .. } => {
-                !self.pinned().contains(mv.from) || SquareSet::ray(mv.from, king).contains(mv.to)
-            }
-            MoveKind::EnPassant { target } => {
-                let queens_and_bishops = (self.queens() | self.bishops()) & self.them();
-                let queens_and_rooks = (self.queens() | self.rooks()) & self.them();
-                let occupied_after =
-                    self.occupied() ^ mv.from.into() ^ mv.to.into() ^ target.into();
-
-                (SquareSet::bishop_moves(king, occupied_after) & queens_and_bishops).is_empty()
-                    && (SquareSet::rook_moves(king, occupied_after) & queens_and_rooks).is_empty()
-            }
-            _ => true,
+        } else {
+            true
         }
     }
 
@@ -435,6 +486,22 @@ impl Position {
     pub fn fen(&self) -> Fen {
         Fen {
             setup: self.setup(),
+        }
+    }
+
+    #[inline]
+    pub fn skip(&mut self) {
+        self.halfmove_clock += 1;
+
+        if self.side_to_move == Color::Black {
+            self.fullmove_number += 1;
+        }
+
+        self.side_to_move = !self.side_to_move;
+        self.en_passant = None;
+
+        if let Some(king) = self.our_king() {
+            self.update_checkers_and_pinners(king);
         }
     }
 
@@ -520,24 +587,25 @@ impl Position {
 
         self.side_to_move = them;
         self.en_passant = ep_square;
-        self.update_checkers_and_pinners();
+
+        if let Some(king) = self.our_king() {
+            self.update_checkers_and_pinners(king);
+        }
     }
 
     #[inline]
     fn put_piece(&mut self, sq: Square, color: Color, piece: Piece) {
         debug_assert!(self.piece_at(sq).is_none(), "{:?} {}\n{}", piece, sq, self);
-        let sq = sq.into();
-        self.pieces[piece] ^= sq;
-        self.colors[color] ^= sq;
-        self.occupied ^= sq;
+        self.pieces[piece].insert(sq);
+        self.colors[color].insert(sq);
+        self.occupied.insert(sq);
     }
 
     #[inline]
     fn grab_piece(&mut self, sq: Square, color: Color, piece: Piece) {
-        let sq = sq.into();
-        self.pieces[piece] ^= sq;
-        self.colors[color] ^= sq;
-        self.occupied ^= sq;
+        self.pieces[piece].toggle(sq);
+        self.colors[color].toggle(sq);
+        self.occupied.toggle(sq);
     }
 
     #[inline]
@@ -548,9 +616,7 @@ impl Position {
     }
 
     #[inline]
-    pub fn update_checkers_and_pinners(&mut self) {
-        let king = self.our_king();
-
+    pub fn update_checkers_and_pinners(&mut self, king: Square) {
         self.pinned = SquareSet::EMPTY;
         self.checkers = self.them()
             & ((SquareSet::knight_moves(king) & self.knights())
@@ -559,7 +625,9 @@ impl Position {
         for attacker in self.sliding_king_attackers(king) {
             let between = SquareSet::between(attacker, king) & self.occupied();
             match between.count() {
-                0 => self.checkers |= attacker.into(),
+                0 => {
+                    self.checkers.insert(attacker);
+                }
                 1 => self.pinned |= between,
                 _ => {}
             }
@@ -582,15 +650,18 @@ impl Position {
             }
         }
 
+        let our_king = self.our_king().unwrap();
+        let their_king = self.their_king().unwrap();
+
         if self.backrank_pawns() > 0 {
             return Err(InvalidPositionError::PawnsInBackRank);
         }
 
-        if (self.attacking(self.their_king()) & self.us()).count() > 0 {
+        if (self.attacking(their_king) & self.us()).count() > 0 {
             return Err(InvalidPositionError::ExposedKing);
         }
 
-        let checkers = self.attacking(self.our_king()) & self.them();
+        let checkers = self.attacking(our_king) & self.them();
         if checkers.count() > 2 {
             return Err(InvalidPositionError::TooManyCheckers(checkers.count()));
         }
@@ -599,10 +670,12 @@ impl Position {
             if !self.are_castling_rights_valid() {
                 return Err(InvalidPositionError::CastlingRights);
             }
-            if !self.is_castling_king_valid(color) {
+
+            let king = self.king(color).unwrap();
+            if !self.is_castling_king_valid(king, color) {
                 return Err(InvalidPositionError::CastlingKingPosition(color));
             }
-            if !self.are_castling_rooks_valid(color) {
+            if !self.are_castling_rooks_valid(king, color) {
                 return Err(InvalidPositionError::CastlingRookPosition(color));
             }
         }
@@ -653,28 +726,26 @@ impl Position {
     }
 
     #[inline]
-    fn is_castling_king_valid(&self, color: Color) -> bool {
+    fn is_castling_king_valid(&self, king: Square, color: Color) -> bool {
         if self.castling(color).is_none() {
             return true;
         }
 
-        let king = self.king(color);
         king.rank() == Rank::back_rank(color)
             && (self.variant != Variant::Standard || king.file() == File::E)
     }
 
     #[inline]
-    fn are_castling_rooks_valid(&self, color: Color) -> bool {
+    fn are_castling_rooks_valid(&self, king: Square, color: Color) -> bool {
         if self.castling(color).is_none() {
             return true;
         }
 
         let backrank = Rank::back_rank(color);
         let castling = self.castling(color);
-        let king_file = self.king(color).file();
 
         if let Some(king_rook) = castling.king_side.map(|file| Square::new(file, backrank)) {
-            if king_rook.file() < king_file
+            if king_rook.file() < king.file()
                 || !self.is_valid_castling_rook(CastlingSide::King, king_rook, color)
             {
                 return false;
@@ -682,7 +753,7 @@ impl Position {
         }
 
         if let Some(queen_rook) = castling.queen_side.map(|file| Square::new(file, backrank)) {
-            if queen_rook.file() > king_file
+            if queen_rook.file() > king.file()
                 || !self.is_valid_castling_rook(CastlingSide::Queen, queen_rook, color)
             {
                 return false;
@@ -817,7 +888,7 @@ impl Setup {
 
     #[inline]
     pub fn king(&self, color: Color) -> Option<Square> {
-        (self.pieces[Piece::King] & self.colors[color]).as_square()
+        (self.pieces[Piece::King] & self.colors[color]).single()
     }
 
     #[inline]
@@ -900,7 +971,7 @@ impl Setup {
             pinned: SquareSet::EMPTY,
         };
         position.validate()?;
-        position.update_checkers_and_pinners();
+        position.update_checkers_and_pinners(position.our_king().unwrap());
         Ok(position)
     }
 
@@ -999,7 +1070,7 @@ fn initial_pieces_chess960(seed: u32) -> ByPiece<SquareSet> {
         7 => (2, 3),
         8 => (2, 4),
         9 => (3, 4),
-        _ => unreachable!()
+        _ => unreachable!(),
     };
 
     let mut free_squares = SquareSet::from_rank(Rank::First);
@@ -1009,14 +1080,14 @@ fn initial_pieces_chess960(seed: u32) -> ByPiece<SquareSet> {
         1 => Square::D1,
         2 => Square::F1,
         3 => Square::H1,
-        _ => unreachable!()
+        _ => unreachable!(),
     };
     let bishop2 = match dark_bishop {
         0 => Square::A1,
         1 => Square::C1,
         2 => Square::E1,
         3 => Square::G1,
-        _ => unreachable!()
+        _ => unreachable!(),
     };
     free_squares.toggle(bishop1);
     free_squares.toggle(bishop2);
@@ -1034,15 +1105,15 @@ fn initial_pieces_chess960(seed: u32) -> ByPiece<SquareSet> {
     free_squares.toggle(rook1);
     free_squares.toggle(rook2);
 
-    let king = free_squares.as_square().unwrap();
-    
+    let king = free_squares.single().unwrap();
+
     let mut pieces = ByPiece::from_array([
         INITIAL_PIECES[Piece::Pawn],
-        SquareSet::from(knight1) | SquareSet::from(knight2),
-        SquareSet::from(bishop1) | SquareSet::from(bishop2),
-        SquareSet::from(rook1) | SquareSet::from(rook2),
-        queen.into(),
-        king.into()
+        SquareSet::from([knight1, knight2]),
+        SquareSet::from([bishop1, bishop2]),
+        SquareSet::from([rook1, rook2]),
+        SquareSet::from(queen),
+        SquareSet::from(king),
     ]);
 
     for squares in pieces.values_mut() {
@@ -1050,7 +1121,7 @@ fn initial_pieces_chess960(seed: u32) -> ByPiece<SquareSet> {
     }
 
     pieces
-} 
+}
 
 const INITIAL_PIECES: ByPiece<SquareSet> = ByPiece::from_array([
     // Pawn

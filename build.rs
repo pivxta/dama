@@ -107,14 +107,14 @@ fn between(a: Square, b: Square) -> SquareSet {
 
 #[inline]
 fn ray(a: Square, b: Square) -> SquareSet {
-    let diagonal = moves::bishop(a, SquareSet::EMPTY) | SquareSet::from(a);
+    let diagonal = moves::bishop(a, SquareSet::EMPTY).with(a);
     if diagonal.contains(b) {
-        return diagonal & (moves::bishop(b, SquareSet::EMPTY) | SquareSet::from(b));
+        return diagonal & moves::bishop(b, SquareSet::EMPTY).with(b);
     }
 
-    let orthogonal = moves::rook(a, SquareSet::EMPTY) | SquareSet::from(a);
+    let orthogonal = moves::rook(a, SquareSet::EMPTY).with(a);
     if orthogonal.contains(b) {
-        return orthogonal & (moves::rook(b, SquareSet::EMPTY) | SquareSet::from(b));
+        return orthogonal & moves::rook(b, SquareSet::EMPTY).with(b);
     }
 
     SquareSet::EMPTY

@@ -72,13 +72,13 @@ impl Square {
     pub const COUNT: usize = Self::ALL.len();
 
     #[inline]
-    pub fn from_index(index: usize) -> Self {
+    pub const fn from_index(index: usize) -> Self {
         assert!(index < 64);
         unsafe { Self::from_index_unchecked(index) }
     }
 
     #[inline]
-    pub fn try_from_index(index: usize) -> Option<Self> {
+    pub const fn try_from_index(index: usize) -> Option<Self> {
         if index < 64 {
             Some(unsafe { Self::from_index_unchecked(index) })
         } else {
@@ -104,7 +104,7 @@ impl Square {
     }
 
     #[inline]
-    pub fn new(file: File, rank: Rank) -> Self {
+    pub const fn new(file: File, rank: Rank) -> Self {
         unsafe { Square::from_index_unchecked(file as usize + rank as usize * 8) }
     }
 
@@ -116,31 +116,36 @@ impl Square {
     }
 
     #[inline]
-    pub fn file(self) -> File {
+    pub const fn file(self) -> File {
         unsafe { File::from_index_unchecked(self as usize % 8) }
     }
 
     #[inline]
-    pub fn rank(self) -> Rank {
+    pub const fn rank(self) -> Rank {
         unsafe { Rank::from_index_unchecked(self as usize / 8) }
     }
 
     #[inline]
-    pub fn with_file(self, file: File) -> Self {
+    pub const fn with_file(self, file: File) -> Self {
         Square::new(file, self.rank())
     }
 
     #[inline]
-    pub fn with_rank(self, rank: Rank) -> Self {
+    pub const fn with_rank(self, rank: Rank) -> Self {
         Square::new(self.file(), rank)
     }
 
     #[inline]
-    pub fn offset_by(self, file_offset: i32, rank_offset: i32) -> Option<Square> {
-        Some(Square::new(
-            self.file().offset_by(file_offset)?,
-            self.rank().offset_by(rank_offset)?,
-        ))
+    pub const fn offset_by(self, file_offset: i32, rank_offset: i32) -> Option<Square> {
+        if let Some(file) = self.file().offset_by(file_offset) {
+            if let Some(rank) = self.rank().offset_by(rank_offset) {
+                Some(Square::new(file, rank))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -163,13 +168,13 @@ impl File {
     pub const COUNT: usize = Self::ALL.len();
 
     #[inline]
-    pub fn from_index(index: usize) -> Self {
+    pub const fn from_index(index: usize) -> Self {
         assert!(index < 8);
         unsafe { Self::from_index_unchecked(index) }
     }
 
     #[inline]
-    pub fn try_from_index(index: usize) -> Option<Self> {
+    pub const fn try_from_index(index: usize) -> Option<Self> {
         if index < 8 {
             Some(unsafe { Self::from_index_unchecked(index) })
         } else {
@@ -223,13 +228,13 @@ impl Rank {
     pub const COUNT: usize = Self::ALL.len();
 
     #[inline]
-    pub fn from_index(index: usize) -> Self {
+    pub const fn from_index(index: usize) -> Self {
         assert!(index < 8);
         unsafe { Self::from_index_unchecked(index) }
     }
 
     #[inline]
-    pub fn try_from_index(index: usize) -> Option<Self> {
+    pub const fn try_from_index(index: usize) -> Option<Self> {
         if index < 8 {
             Some(unsafe { Self::from_index_unchecked(index) })
         } else {

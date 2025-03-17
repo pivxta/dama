@@ -64,8 +64,12 @@ fn playmove_bench(c: &mut Criterion) {
 }
 
 fn newpos_bench(c: &mut Criterion) {
-    c.bench_function("new_startpos", |b| b.iter(|| black_box(Position::new_initial())));
-    c.bench_function("new_chess960", |b| b.iter(|| black_box(Position::new_chess960(black_box(304)))));
+    c.bench_function("new_startpos", |b| {
+        b.iter(|| black_box(Position::new_initial()))
+    });
+    c.bench_function("new_chess960", |b| {
+        b.iter(|| black_box(Position::new_chess960(black_box(304))))
+    });
 }
 
 fn fen_bench(c: &mut Criterion) {
