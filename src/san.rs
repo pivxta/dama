@@ -48,6 +48,89 @@ pub struct SanParseError;
 
 impl SanMove {
     #[inline]
+    pub fn from_ascii(s: &[u8]) -> Result<Self, SanParseError> {
+        if s.is_empty() {
+            return Err(SanParseError);
+        }
+
+        let mut chars = s.iter().cloned().rev().peekable();
+
+        let postfix = chars
+            .next_if(|c| matches!(c, b'#' | b'+'))
+            .and_then(notation_to_postfix);
+
+        if chars.next_if_eq(&b'O').is_some() {
+            if chars.next_if_eq(&b'-').is_none() || chars.next_if_eq(&b'O').is_none() {
+                return Err(SanParseError);
+            }
+
+            let side = if chars.next_if_eq(&b'-').is_some() && chars.next_if_eq(&b'O').is_some() {
+                CastlingSide::Queen
+            } else if chars.peek().is_none() {
+                CastlingSide::King
+            } else {
+                return Err(SanParseError);
+            };
+
+            return Ok(SanMove {
+                kind: SanKind::Castling(side),
+                postfix,
+            });
+        }
+
+        let promotion = chars
+            .next_if(|c| matches!(c, b'N' | b'B' | b'R' | b'Q'))
+            .and_then(notation_to_piece);
+
+        if promotion.is_some() && chars.next_if_eq(&b'=').is_none() {
+            return Err(SanParseError);
+        }
+
+        let to = match (
+            chars.next_if(|c| matches!(c, b'1'..=b'8')),
+            chars.next_if(|c| matches!(c, b'a'..=b'h')),
+        ) {
+            (Some(rank), Some(file)) => {
+                Square::new(
+                    File::try_from(file as char).unwrap(), 
+                    Rank::try_from(rank as char).unwrap()
+                )
+            }
+            _ => return Err(SanParseError),
+        };
+
+        let is_capture = chars.next_if_eq(&b'x').is_some();
+
+        let from_rank = chars
+            .next_if(|c| matches!(c, b'1'..=b'8'))
+            .map(|c| Rank::try_from(c as char).unwrap());
+        let from_file = chars
+            .next_if(|c| matches!(c, b'a'..=b'h'))
+            .map(|c| File::try_from(c as char).unwrap());
+
+        let piece = chars
+            .next()
+            .map(|c| notation_to_piece(c).ok_or(SanParseError))
+            .unwrap_or(Ok(Piece::Pawn))?;
+
+        if chars.peek().is_some() {
+            return Err(SanParseError);
+        }
+
+        Ok(SanMove {
+            kind: SanKind::Simple {
+                piece,
+                is_capture,
+                from_file,
+                from_rank,
+                to,
+                promotion,
+            },
+            postfix,
+        })
+    }
+
+    #[inline]
     pub fn moved_piece(&self) -> Piece {
         match self.kind {
             SanKind::Castling(_) => Piece::King,
@@ -150,82 +233,7 @@ impl ToMove for SanMove {
 impl FromStr for SanMove {
     type Err = SanParseError;
     fn from_str(s: &str) -> Result<Self, SanParseError> {
-        if s.is_empty() {
-            return Err(SanParseError);
-        }
-
-        let mut chars = s.chars().rev().peekable();
-
-        let postfix = chars
-            .next_if(|c| matches!(c, '#' | '+'))
-            .and_then(notation_to_postfix);
-
-        if chars.next_if_eq(&'O').is_some() {
-            if chars.next_if_eq(&'-').is_none() || chars.next_if_eq(&'O').is_none() {
-                return Err(SanParseError);
-            }
-
-            let side = if chars.next_if_eq(&'-').is_some() && chars.next_if_eq(&'O').is_some() {
-                CastlingSide::Queen
-            } else if chars.peek().is_none() {
-                CastlingSide::King
-            } else {
-                return Err(SanParseError);
-            };
-
-            return Ok(SanMove {
-                kind: SanKind::Castling(side),
-                postfix,
-            });
-        }
-
-        let promotion = chars
-            .next_if(|c| matches!(c, 'N' | 'B' | 'R' | 'Q'))
-            .and_then(notation_to_piece);
-
-        if promotion.is_some() && chars.next_if_eq(&'=').is_none() {
-            return Err(SanParseError);
-        }
-
-        let to = match (
-            chars.next_if(|c| matches!(c, '1'..='8')),
-            chars.next_if(|c| matches!(c, 'a'..='h')),
-        ) {
-            (Some(rank), Some(file)) => {
-                Square::new(File::try_from(file).unwrap(), Rank::try_from(rank).unwrap())
-            }
-            _ => return Err(SanParseError),
-        };
-
-        let is_capture = chars.next_if_eq(&'x').is_some();
-
-        let from_rank = chars
-            .next_if(|c| matches!(c, '1'..='8'))
-            .map(|c| Rank::try_from(c).unwrap());
-        let from_file = chars
-            .next_if(|c| matches!(c, 'a'..='h'))
-            .map(|c| File::try_from(c).unwrap());
-
-        let piece = chars
-            .next()
-            .map(|c| notation_to_piece(c).ok_or(SanParseError))
-            .unwrap_or(Ok(Piece::Pawn))?;
-
-        if chars.peek().is_some() {
-            return Err(SanParseError);
-        }
-
-        Ok(SanMove {
-            kind: SanKind::Simple {
-                piece,
-                is_capture,
-                from_file,
-                from_rank,
-                to,
-                promotion,
-            },
-            postfix,
-        })
+        SanMove::from_ascii(s.as_bytes())
     }
 }
 
@@ -282,22 +290,22 @@ impl fmt::Display for SanMove {
     }
 }
 
-fn notation_to_postfix(c: char) -> Option<Postfix> {
+fn notation_to_postfix(c: u8) -> Option<Postfix> {
     match c {
-        '+' => Some(Postfix::Check),
-        '#' => Some(Postfix::Checkmate),
+        b'+' => Some(Postfix::Check),
+        b'#' => Some(Postfix::Checkmate),
         _ => None,
     }
 }
 
-fn notation_to_piece(c: char) -> Option<Piece> {
+fn notation_to_piece(c: u8) -> Option<Piece> {
     match c {
-        'P' => Some(Piece::Pawn),
-        'N' => Some(Piece::Knight),
-        'B' => Some(Piece::Bishop),
-        'R' => Some(Piece::Rook),
-        'Q' => Some(Piece::Queen),
-        'K' => Some(Piece::King),
+        b'P' => Some(Piece::Pawn),
+        b'N' => Some(Piece::Knight),
+        b'B' => Some(Piece::Bishop),
+        b'R' => Some(Piece::Rook),
+        b'Q' => Some(Piece::Queen),
+        b'K' => Some(Piece::King),
         _ => None,
     }
 }
@@ -365,6 +373,8 @@ fn reverse_pawn_push(color: Color, square: Square, occupied: SquareSet) -> Squar
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use crate::{
         san::{Postfix, SanKind},
         CastlingSide, File, Piece, Position, Rank, SanMove,
@@ -525,5 +535,53 @@ mod tests {
     fn check_san(str: &str, san: SanMove) {
         assert_eq!(str.parse(), Ok(san));
         assert_eq!(format!("{}", san), str);
+    }
+
+    #[test]
+    fn san_play() {
+        let moves = [
+            "Nf3", "d5", "g3", "c5", "Bg2", "Nc6", "d4", "e6", "O-O", "cxd4", "Nxd4", "Nge7", "c4",
+            "Nxd4", "Qxd4", "Nc6", "Qd1", "d4", "e3", "Bc5", "exd4", "Bxd4", "Nc3", "O-O", "Nb5",
+            "Bb6", "b3", "a6", "Nc3", "Bd4", "Bb2", "e5", "Qd2", "Be6", "Nd5", "b5", "cxb5",
+            "axb5", "Nf4", "exf4", "Bxc6", "Bxb2", "Qxb2", "Rb8", "Rfd1", "Qb6", "Bf3", "fxg3",
+            "hxg3", "b4", "a4", "bxa3", "Rxa3", "g6", "Qd4", "Qb5", "b4", "Qxb4", "Qxb4", "Rxb4",
+            "Ra8", "Rxa8", "Bxa8", "g5", "Bd5", "Bf5", "Rc1", "Kg7", "Rc7", "Bg6", "Rc4", "Rb1+",
+            "Kg2", "Re1", "Rb4", "h5", "Ra4", "Re5", "Bf3", "Kh6", "Kg1", "Re6", "Rc4", "g4",
+            "Bd5", "Rd6", "Bb7", "Kg5", "f3", "f5", "fxg4", "hxg4", "Rb4", "Bf7", "Kf2", "Rd2+",
+            "Kg1", "Kf6", "Rb6+", "Kg5", "Rb4", "Be6", "Ra4", "Rb2", "Ba8", "Kf6", "Rf4", "Ke5",
+            "Rf2", "Rxf2", "Kxf2", "Bd5", "Bxd5", "Kxd5", "Ke3", "Ke5",
+        ];
+        let mut position = Position::new_initial();
+
+        for san in moves.into_iter().map(SanMove::from_str).map(Result::unwrap) {
+            position.play(&san).unwrap();
+        }
+
+        assert_eq!(
+            position.fen().to_string(),
+            "8/8/8/4kp2/6p1/4K1P1/8/8 w - - 2 59"
+        );
+    }
+
+    #[test]
+    fn san_play960() {
+        let moves = [
+            "e4", "e5", "Nf3", "Nf6", "a4", "c6", "b4", "Qc7", "Qb3", "Ng6", "Rb1", "d5", "Ng3",
+            "O-O-O", "Bd3", "dxe4", "Nxe4", "Nf4", "Nxf6", "gxf6", "Bf5+", "Kb8", "g3", "Nd5",
+            "O-O", "Nxb4", "d4", "c5", "dxe5", "b6", "Rfd1", "Qc6", "exf6", "Bb7", "Bg4", "c4",
+            "Qc3", "a5", "Rxd8+", "Rxd8", "Qe5+", "Ka7", "Qf5", "Bc5", "Bc3", "Nxc2", "Rc1", "Ne3",
+            "fxe3", "Bxe3+", "Kg2", "Bxc1", "Kh3", "Rd3", "Bd4", "Qd5",
+        ];
+        let mut position =
+            Position::from_fen("bqrkrbnn/pppppppp/8/8/8/8/PPPPPPPP/BQRKRBNN w KQkq - 0 1").unwrap();
+
+        for san in moves.into_iter().map(SanMove::from_str).map(Result::unwrap) {
+            position.play(&san).unwrap();
+        }
+
+        assert_eq!(
+            position.fen().to_string(),
+            "8/kb3p1p/1p3P2/p2q1Q2/P1pB2B1/3r1NPK/7P/2b5 w - - 4 29"
+        );
     }
 }

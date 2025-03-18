@@ -67,7 +67,7 @@ impl PartialEq for Position {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.colors == other.colors
-            && self.pieces == other.pieces 
+            && self.pieces == other.pieces
             && self.en_passant == other.en_passant
             && self.side_to_move == other.side_to_move
     }
@@ -141,9 +141,8 @@ impl Position {
     #[inline]
     pub fn pseudolegal_en_passant(&self) -> Option<Square> {
         self.en_passant.filter(|&ep| {
-            let attackers = SquareSet::pawn_attacks(!self.side_to_move, ep)
-                & self.pawns()
-                & self.us();
+            let attackers =
+                SquareSet::pawn_attacks(!self.side_to_move, ep) & self.pawns() & self.us();
 
             !attackers.is_empty()
         })
@@ -153,9 +152,8 @@ impl Position {
     pub fn legal_en_passant(&self) -> Option<Square> {
         self.en_passant.filter(|&ep| {
             let target = ep.with_rank(Rank::fifth_for(self.side_to_move));
-            let mut attackers = SquareSet::pawn_attacks(!self.side_to_move, ep)
-                & self.pawns()
-                & self.us();
+            let mut attackers =
+                SquareSet::pawn_attacks(!self.side_to_move, ep) & self.pawns() & self.us();
 
             attackers.retain(|from| self.is_safe(&Move::new_en_passant(from, ep, target)));
             !attackers.is_empty()
@@ -1057,6 +1055,7 @@ fn piece_moves(piece: Piece, square: Square, occupied: SquareSet) -> SquareSet {
 
 fn initial_chess960(seed: u32) -> (ByPiece<SquareSet>, ByColor<Castling>) {
     assert!(seed < 960);
+
     let seed = seed as usize;
     let (seed, light_bishop) = (seed / 4, seed % 4);
     let (seed, dark_bishop) = (seed / 4, seed % 4);
@@ -1077,20 +1076,12 @@ fn initial_chess960(seed: u32) -> (ByPiece<SquareSet>, ByColor<Castling>) {
 
     let mut free_squares = SquareSet::from_rank(Rank::First);
 
-    let bishop1 = match light_bishop {
-        0 => Square::B1,
-        1 => Square::D1,
-        2 => Square::F1,
-        3 => Square::H1,
-        _ => unreachable!(),
-    };
-    let bishop2 = match dark_bishop {
-        0 => Square::A1,
-        1 => Square::C1,
-        2 => Square::E1,
-        3 => Square::G1,
-        _ => unreachable!(),
-    };
+    use Square::*;
+    const LIGHT_BISHOP_SQS: [Square; 4] = [B1, D1, F1, H1];
+    const DARK_BISHOP_SQS: [Square; 4] = [A1, C1, E1, G1];
+
+    let bishop1 = LIGHT_BISHOP_SQS[light_bishop as usize];
+    let bishop2 = DARK_BISHOP_SQS[dark_bishop as usize];
     free_squares.toggle(bishop1);
     free_squares.toggle(bishop2);
 
@@ -1155,14 +1146,14 @@ const INITIAL_OCCUPIED: SquareSet = SquareSet::from_bits(0xffff00000000ffff);
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use crate::{
         position::Setup,
-        Color,
+        Castling, Color,
         FenError::*,
+        File,
         InvalidPositionError::{self, *},
-        Move, Piece, Position, SanMove,
+        Move, Piece, Position,
         Square::*,
         SquareSet, Variant,
     };
@@ -1299,50 +1290,32 @@ mod tests {
     }
 
     #[test]
-    fn san_play() {
-        let moves = [
-            "Nf3", "d5", "g3", "c5", "Bg2", "Nc6", "d4", "e6", "O-O", "cxd4", "Nxd4", "Nge7", "c4",
-            "Nxd4", "Qxd4", "Nc6", "Qd1", "d4", "e3", "Bc5", "exd4", "Bxd4", "Nc3", "O-O", "Nb5",
-            "Bb6", "b3", "a6", "Nc3", "Bd4", "Bb2", "e5", "Qd2", "Be6", "Nd5", "b5", "cxb5",
-            "axb5", "Nf4", "exf4", "Bxc6", "Bxb2", "Qxb2", "Rb8", "Rfd1", "Qb6", "Bf3", "fxg3",
-            "hxg3", "b4", "a4", "bxa3", "Rxa3", "g6", "Qd4", "Qb5", "b4", "Qxb4", "Qxb4", "Rxb4",
-            "Ra8", "Rxa8", "Bxa8", "g5", "Bd5", "Bf5", "Rc1", "Kg7", "Rc7", "Bg6", "Rc4", "Rb1+",
-            "Kg2", "Re1", "Rb4", "h5", "Ra4", "Re5", "Bf3", "Kh6", "Kg1", "Re6", "Rc4", "g4",
-            "Bd5", "Rd6", "Bb7", "Kg5", "f3", "f5", "fxg4", "hxg4", "Rb4", "Bf7", "Kf2", "Rd2+",
-            "Kg1", "Kf6", "Rb6+", "Kg5", "Rb4", "Be6", "Ra4", "Rb2", "Ba8", "Kf6", "Rf4", "Ke5",
-            "Rf2", "Rxf2", "Kxf2", "Bd5", "Bxd5", "Kxd5", "Ke3", "Ke5",
-        ];
-        let mut position = Position::new_initial();
-
-        for san in moves.into_iter().map(SanMove::from_str).map(Result::unwrap) {
-            position.play(&san).unwrap();
-        }
-
+    fn chess960_seed() {
+        assert_eq!(Position::new_chess960(518), Position::new_initial());
+        let pos1 = Position::new_chess960(22);
         assert_eq!(
-            position.fen().to_string(),
-            "8/8/8/4kp2/6p1/4K1P1/8/8 w - - 2 59"
+            pos1.fen().to_string(),
+            "nqbnrbkr/pppppppp/8/8/8/8/PPPPPPPP/NQBNRBKR w KQkq - 0 1"
         );
-    }
-    
-    #[test]
-    fn san_play960() {
-        let moves = [
-            "e4", "e5", "Nf3", "Nf6", "a4", "c6", "b4", "Qc7", "Qb3", "Ng6", "Rb1", "d5", "Ng3",
-            "O-O-O", "Bd3", "dxe4", "Nxe4", "Nf4", "Nxf6", "gxf6", "Bf5+", "Kb8", "g3", "Nd5",
-            "O-O", "Nxb4", "d4", "c5", "dxe5", "b6", "Rfd1", "Qc6", "exf6", "Bb7", "Bg4", "c4",
-            "Qc3", "a5", "Rxd8+", "Rxd8", "Qe5+", "Ka7", "Qf5", "Bc5", "Bc3", "Nxc2", "Rc1", "Ne3",
-            "fxe3", "Bxe3+", "Kg2", "Bxc1", "Kh3", "Rd3", "Bd4", "Qd5",
-        ];
-        let mut position =
-            Position::from_fen("bqrkrbnn/pppppppp/8/8/8/8/PPPPPPPP/BQRKRBNN w KQkq - 0 1").unwrap();
-
-        for san in moves.into_iter().map(SanMove::from_str).map(Result::unwrap) {
-            position.play(&san).unwrap();
-        }
-
         assert_eq!(
-            position.fen().to_string(),
-            "8/kb3p1p/1p3P2/p2q1Q2/P1pB2B1/3r1NPK/7P/2b5 w - - 4 29"
+            pos1.castling(Color::White),
+            Castling {
+                king_side: Some(File::H),
+                queen_side: Some(File::E),
+            }
+        );
+
+        let pos2 = Position::new_chess960(420);
+        assert_eq!(
+            pos2.fen().to_string(),
+            "rbbnqnkr/pppppppp/8/8/8/8/PPPPPPPP/RBBNQNKR w KQkq - 0 1",
+        );
+        assert_eq!(
+            pos2.castling(Color::White),
+            Castling {
+                king_side: Some(File::H),
+                queen_side: Some(File::A),
+            }
         );
     }
 }

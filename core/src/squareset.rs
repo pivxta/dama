@@ -264,7 +264,7 @@ impl SquareSet {
         }
         Some(first)
     }
-    
+
     #[inline]
     pub const fn shift_right(self) -> SquareSet {
         SquareSet((self.0 & !SquareSet::from_file(File::H).0).wrapping_shl(1))
@@ -277,7 +277,8 @@ impl SquareSet {
 
     #[inline]
     pub const fn offset_by(self, file_offset: i32, rank_offset: i32) -> SquareSet {
-        self.offset_files_by(file_offset).offset_ranks_by(rank_offset)
+        self.offset_files_by(file_offset)
+            .offset_ranks_by(rank_offset)
     }
 
     #[inline]
