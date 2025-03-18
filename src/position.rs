@@ -93,12 +93,13 @@ impl Position {
 
     #[inline]
     pub fn new_chess960(scharnagl_number: u32) -> Self {
+        let (pieces, castling) = initial_chess960(scharnagl_number);
         Self {
-            pieces: initial_pieces_chess960(scharnagl_number),
+            pieces,
+            castling,
             colors: INITIAL_COLORS,
             occupied: INITIAL_OCCUPIED,
             side_to_move: Color::White,
-            castling: ByColor::from_fn(|_| Castling::ALL_STANDARD),
             checkers: SquareSet::EMPTY,
             pinned: SquareSet::EMPTY,
             en_passant: None,
@@ -832,11 +833,12 @@ impl Setup {
 
     #[inline]
     pub fn new_chess960(scharnagl_number: u32) -> Self {
+        let (pieces, castling) = initial_chess960(scharnagl_number);
         Self {
+            pieces,
+            castling,
             variant: None,
-            pieces: initial_pieces_chess960(scharnagl_number),
             colors: INITIAL_COLORS,
-            castling: ByColor::from_fn(|_| Castling::ALL_STANDARD),
             side_to_move: Color::White,
             en_passant: None,
             halfmove_clock: 0,
@@ -1053,7 +1055,7 @@ fn piece_moves(piece: Piece, square: Square, occupied: SquareSet) -> SquareSet {
     }
 }
 
-fn initial_pieces_chess960(seed: u32) -> ByPiece<SquareSet> {
+fn initial_chess960(seed: u32) -> (ByPiece<SquareSet>, ByColor<Castling>) {
     assert!(seed < 960);
     let seed = seed as usize;
     let (seed, light_bishop) = (seed / 4, seed % 4);
@@ -1115,12 +1117,16 @@ fn initial_pieces_chess960(seed: u32) -> ByPiece<SquareSet> {
         SquareSet::from(queen),
         SquareSet::from(king),
     ]);
+    let castling = Castling {
+        king_side: Some(rook2.file()),
+        queen_side: Some(rook1.file()),
+    };
 
     for squares in pieces.values_mut() {
         *squares |= squares.flip_vertical();
     }
 
-    pieces
+    (pieces, ByColor::from_fn(|_| castling))
 }
 
 const INITIAL_PIECES: ByPiece<SquareSet> = ByPiece::from_array([
@@ -1317,7 +1323,7 @@ mod tests {
             "8/8/8/4kp2/6p1/4K1P1/8/8 w - - 2 59"
         );
     }
-
+    
     #[test]
     fn san_play960() {
         let moves = [
