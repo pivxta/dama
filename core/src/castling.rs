@@ -13,7 +13,6 @@ pub enum CastlingSide {
 }
 
 impl Castling {
-    /// All castling rights for standard chess. Do not use for Chess960.
     pub const ALL_STANDARD: Castling = Castling {
         king_side: Some(File::H),
         queen_side: Some(File::A),

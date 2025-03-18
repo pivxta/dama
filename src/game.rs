@@ -1,6 +1,5 @@
 use core::fmt;
 use std::str::FromStr;
-
 use thiserror::Error;
 
 use crate::Color;

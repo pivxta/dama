@@ -10,7 +10,7 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SanMove {
     pub kind: SanKind,
-    pub postfix: Option<Postfix>,
+    pub suffix: Option<Suffix>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub enum SanKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Postfix {
+pub enum Suffix {
     Check,
     Checkmate,
 }
@@ -55,9 +55,9 @@ impl SanMove {
 
         let mut chars = s.iter().cloned().rev().peekable();
 
-        let postfix = chars
+        let suffix = chars
             .next_if(|c| matches!(c, b'#' | b'+'))
-            .and_then(notation_to_postfix);
+            .and_then(notation_to_suffix);
 
         if chars.next_if_eq(&b'O').is_some() {
             if chars.next_if_eq(&b'-').is_none() || chars.next_if_eq(&b'O').is_none() {
@@ -74,7 +74,7 @@ impl SanMove {
 
             return Ok(SanMove {
                 kind: SanKind::Castling(side),
-                postfix,
+                suffix,
             });
         }
 
@@ -90,12 +90,10 @@ impl SanMove {
             chars.next_if(|c| matches!(c, b'1'..=b'8')),
             chars.next_if(|c| matches!(c, b'a'..=b'h')),
         ) {
-            (Some(rank), Some(file)) => {
-                Square::new(
-                    File::try_from(file as char).unwrap(), 
-                    Rank::try_from(rank as char).unwrap()
-                )
-            }
+            (Some(rank), Some(file)) => Square::new(
+                File::try_from(file as char).unwrap(),
+                Rank::try_from(rank as char).unwrap(),
+            ),
             _ => return Err(SanParseError),
         };
 
@@ -126,10 +124,17 @@ impl SanMove {
                 to,
                 promotion,
             },
-            postfix,
+            suffix,
         })
     }
-
+    /*
+        #[inline]
+        pub fn from_move(mv: Move, position: &Position) -> SanMove {
+            match mv.kind {
+                Castl
+            }
+        }
+    */
     #[inline]
     pub fn moved_piece(&self) -> Piece {
         match self.kind {
@@ -237,11 +242,11 @@ impl FromStr for SanMove {
     }
 }
 
-impl fmt::Display for Postfix {
+impl fmt::Display for Suffix {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Postfix::Check => write!(f, "+"),
-            Postfix::Checkmate => write!(f, "#"),
+            Suffix::Check => write!(f, "+"),
+            Suffix::Checkmate => write!(f, "#"),
         }
     }
 }
@@ -283,17 +288,17 @@ impl fmt::Display for SanMove {
                 )?;
             }
         }
-        if let Some(postfix) = self.postfix {
-            write!(f, "{}", postfix)?;
+        if let Some(suffix) = self.suffix {
+            write!(f, "{}", suffix)?;
         }
         Ok(())
     }
 }
 
-fn notation_to_postfix(c: u8) -> Option<Postfix> {
+fn notation_to_suffix(c: u8) -> Option<Suffix> {
     match c {
-        b'+' => Some(Postfix::Check),
-        b'#' => Some(Postfix::Checkmate),
+        b'+' => Some(Suffix::Check),
+        b'#' => Some(Suffix::Checkmate),
         _ => None,
     }
 }
@@ -376,7 +381,7 @@ mod tests {
     use std::str::FromStr;
 
     use crate::{
-        san::{Postfix, SanKind},
+        san::{Suffix, SanKind},
         CastlingSide, File, Piece, Position, Rank, SanMove,
         Square::*,
     };
@@ -394,7 +399,7 @@ mod tests {
                     to: E4,
                     promotion: None,
                 },
-                postfix: None,
+                suffix: None,
             },
         );
         check_san(
@@ -408,7 +413,7 @@ mod tests {
                     to: D5,
                     promotion: None,
                 },
-                postfix: None,
+                suffix: None,
             },
         );
         check_san(
@@ -422,7 +427,7 @@ mod tests {
                     to: G8,
                     promotion: Some(Piece::Queen),
                 },
-                postfix: None,
+                suffix: None,
             },
         );
         check_san(
@@ -436,7 +441,7 @@ mod tests {
                     to: F6,
                     promotion: None,
                 },
-                postfix: Some(Postfix::Checkmate),
+                suffix: Some(Suffix::Checkmate),
             },
         );
         check_san(
@@ -450,7 +455,7 @@ mod tests {
                     to: C4,
                     promotion: None,
                 },
-                postfix: Some(Postfix::Check),
+                suffix: Some(Suffix::Check),
             },
         );
     }
@@ -461,28 +466,28 @@ mod tests {
             "O-O",
             SanMove {
                 kind: SanKind::Castling(CastlingSide::King),
-                postfix: None,
+                suffix: None,
             },
         );
         check_san(
             "O-O-O",
             SanMove {
                 kind: SanKind::Castling(CastlingSide::Queen),
-                postfix: None,
+                suffix: None,
             },
         );
         check_san(
             "O-O-O+",
             SanMove {
                 kind: SanKind::Castling(CastlingSide::Queen),
-                postfix: Some(Postfix::Check),
+                suffix: Some(Suffix::Check),
             },
         );
         check_san(
             "O-O#",
             SanMove {
                 kind: SanKind::Castling(CastlingSide::King),
-                postfix: Some(Postfix::Checkmate),
+                suffix: Some(Suffix::Checkmate),
             },
         );
     }
@@ -500,7 +505,7 @@ mod tests {
                     to: D2,
                     promotion: None,
                 },
-                postfix: None,
+                suffix: None,
             },
         );
         check_san(
@@ -514,7 +519,7 @@ mod tests {
                     to: G7,
                     promotion: None,
                 },
-                postfix: Some(Postfix::Checkmate),
+                suffix: Some(Suffix::Checkmate),
             },
         );
     }
