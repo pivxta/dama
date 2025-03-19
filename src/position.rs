@@ -922,8 +922,8 @@ impl Setup {
     }
 
     #[inline]
-    pub fn set_pieces(&mut self, pieces: &BySquare<Option<(Color, Piece)>>) -> &mut Self {
-        for (square, spot) in pieces {
+    pub fn set_board(&mut self, board: &BySquare<Option<(Color, Piece)>>) -> &mut Self {
+        for (square, spot) in board {
             if let Some((color, piece)) = spot {
                 self.put_piece(square, *color, *piece);
             } else {
