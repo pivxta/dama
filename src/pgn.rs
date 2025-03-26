@@ -249,7 +249,7 @@ where
         Ok(())
     }
 
-    pub fn parse_tag_name(&mut self) -> ParseResult<Range<usize>> {
+    fn parse_tag_name(&mut self) -> ParseResult<Range<usize>> {
         let scratch_begin = self.scratch.len();
         self.take_while(|c| c.is_ascii_alphanumeric() || c == b'_')?;
         let scratch_end = self.scratch.len();
@@ -261,7 +261,7 @@ where
         Ok(scratch_begin..scratch_end)
     }
 
-    pub fn parse_tag_value(&mut self) -> ParseResult<Range<usize>> {
+    fn parse_tag_value(&mut self) -> ParseResult<Range<usize>> {
         if self.next_if_eq(b'"')?.is_none() {
             return Err(self.error_msg("expected string token for tag value"));
         }
@@ -286,7 +286,7 @@ where
         Ok(scratch_begin..scratch_end)
     }
 
-    pub fn read_movetext<V>(&mut self, visitor: &mut V) -> Result<(), Error<V::Error>>
+    fn read_movetext<V>(&mut self, visitor: &mut V) -> Result<(), Error<V::Error>>
     where
         V: Visitor,
     {
