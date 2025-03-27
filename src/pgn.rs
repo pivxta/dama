@@ -164,7 +164,7 @@ where
         Ok(true)
     }
 
-    pub fn read_tag_pairs<V>(&mut self, visitor: &mut V) -> Result<(), Error<V::Error>>
+    fn read_tag_pairs<V>(&mut self, visitor: &mut V) -> Result<(), Error<V::Error>>
     where
         V: Visitor,
     {
