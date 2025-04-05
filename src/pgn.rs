@@ -80,6 +80,16 @@ pub enum Error<VisitorError> {
     Parse(ParseError),
 }
 
+impl<V> Error<V> {
+    #[inline]
+    pub fn is_recoverable(&self) -> bool {
+        match self {
+            Error::Parse(err) => err.is_recoverable,
+            Error::Visitor(_) => true,
+        }
+    }
+}
+
 type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Debug, Error)]
@@ -88,6 +98,7 @@ pub struct ParseError {
     pub line: u32,
     pub column: u32,
     pub kind: ParseErrorKind,
+    pub is_recoverable: bool,
 }
 
 #[derive(Debug, Error)]
@@ -612,6 +623,7 @@ where
         ParseError {
             line: self.line,
             column: self.column,
+            is_recoverable: !self.unrecoverable,
             kind,
         }
     }
