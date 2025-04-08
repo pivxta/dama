@@ -14,6 +14,16 @@ pub enum Outcome {
 #[error("invalid outcome string.")]
 pub struct OutcomeParseError;
 
+impl Outcome {
+    #[inline]
+    pub fn winner(self) -> Option<Color> {
+        match self {
+            Outcome::Winner(winner) => Some(winner),
+            Outcome::Draw => None
+        }
+    }
+}
+
 impl FromStr for Outcome {
     type Err = OutcomeParseError;
 
