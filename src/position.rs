@@ -1087,8 +1087,8 @@ fn initial_chess960(seed: u32) -> (ByPiece<SquareSet>, ByColor<Castling>) {
     const LIGHT_BISHOP_SQS: [Square; 4] = [B1, D1, F1, H1];
     const DARK_BISHOP_SQS: [Square; 4] = [A1, C1, E1, G1];
 
-    let bishop1 = LIGHT_BISHOP_SQS[light_bishop as usize];
-    let bishop2 = DARK_BISHOP_SQS[dark_bishop as usize];
+    let bishop1 = LIGHT_BISHOP_SQS[light_bishop];
+    let bishop2 = DARK_BISHOP_SQS[dark_bishop];
     free_squares.toggle(bishop1);
     free_squares.toggle(bishop2);
 
