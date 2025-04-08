@@ -136,6 +136,21 @@ impl Square {
     }
 
     #[inline]
+    pub const fn flip_vertical(self) -> Self {
+        unsafe { Self::from_index_unchecked(self as usize ^ 0b111000) }
+    }
+
+    #[inline]
+    pub const fn flip_horizontal(self) -> Self {
+        unsafe { Self::from_index_unchecked(self as usize ^ 0b000111) }
+    }
+
+    #[inline]
+    pub const fn rotate_180(self) -> Self {
+        unsafe { Self::from_index_unchecked(self as usize ^ 0b111111) }
+    }
+
+    #[inline]
     pub const fn offset_by(self, file_offset: i32, rank_offset: i32) -> Option<Square> {
         if let Some(file) = self.file().offset_by(file_offset) {
             if let Some(rank) = self.rank().offset_by(rank_offset) {
@@ -190,6 +205,11 @@ impl File {
     #[inline]
     pub const fn distance(self, other: Self) -> u32 {
         u32::abs_diff(self as u32, other as u32)
+    }
+
+    #[inline]
+    pub const fn flip(self) -> Self {
+        unsafe { Self::from_index_unchecked(7 - self as usize) }
     }
 
     #[inline]
@@ -265,6 +285,11 @@ impl Rank {
     #[inline]
     pub const fn distance(self, other: Self) -> u32 {
         u32::abs_diff(self as u32, other as u32)
+    }
+
+    #[inline]
+    pub const fn flip(self) -> Self {
+        unsafe { Self::from_index_unchecked(7 - self as usize) }
     }
 
     #[inline]
@@ -416,5 +441,17 @@ mod tests {
         assert_eq!(format!("{}", D2), "d2");
         assert_eq!(format!("{}", A5), "a5");
         assert_eq!(format!("{}", C2), "c2");
+    }
+
+    #[test]
+    fn square_flip() {
+        assert_eq!(E4.flip_vertical(), E5);
+        assert_eq!(A1.flip_vertical(), A8);
+        assert_eq!(B2.flip_vertical(), B7);
+        assert_eq!(F6.flip_vertical(), F3);
+        assert_eq!(A8.flip_horizontal(), H8);
+        assert_eq!(E4.flip_horizontal(), D4);
+        assert_eq!(F2.flip_horizontal(), C2);
+        assert_eq!(B7.flip_horizontal(), G7);
     }
 }
