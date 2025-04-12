@@ -710,8 +710,8 @@ impl Position {
         let white = self.castling(Color::White);
         let black = self.castling(Color::Black);
 
-        if (white.king_side.is_some() && white.king_side == white.queen_side) 
-            || (black.king_side.is_some() && black.king_side == black.queen_side) 
+        if (white.king_side.is_some() && white.king_side == white.queen_side)
+            || (black.king_side.is_some() && black.king_side == black.queen_side)
         {
             return false;
         }

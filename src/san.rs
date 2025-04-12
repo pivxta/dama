@@ -381,7 +381,7 @@ mod tests {
     use std::str::FromStr;
 
     use crate::{
-        san::{Suffix, SanKind},
+        san::{SanKind, Suffix},
         CastlingSide, File, Piece, Position, Rank, SanMove,
         Square::*,
     };

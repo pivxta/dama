@@ -19,7 +19,7 @@ impl Outcome {
     pub fn winner(self) -> Option<Color> {
         match self {
             Outcome::Winner(winner) => Some(winner),
-            Outcome::Draw => None
+            Outcome::Draw => None,
         }
     }
 }
