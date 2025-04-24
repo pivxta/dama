@@ -313,13 +313,18 @@ impl Position {
     }
 
     #[inline]
-    pub fn attacking(&self, square: Square) -> SquareSet {
+    pub fn attacking_with(&self, square: Square, occupied: SquareSet) -> SquareSet {
         (self.knights() & SquareSet::knight_moves(square))
-            | ((self.bishops() | self.queens()) & SquareSet::bishop_moves(square, self.occupied))
-            | ((self.rooks() | self.queens()) & SquareSet::rook_moves(square, self.occupied))
+            | ((self.bishops() | self.queens()) & SquareSet::bishop_moves(square, occupied))
+            | ((self.rooks() | self.queens()) & SquareSet::rook_moves(square, occupied))
             | (self.pawns() & self.white() & SquareSet::pawn_attacks(Color::Black, square))
             | (self.pawns() & self.black() & SquareSet::pawn_attacks(Color::White, square))
             | (self.pieces(Piece::King) & SquareSet::king_moves(square))
+    }
+
+    #[inline]
+    pub fn attacking(&self, square: Square) -> SquareSet {
+        self.attacking_with(square, self.occupied)
     }
 
     pub fn is_legal(&self, mv: &Move) -> bool {
