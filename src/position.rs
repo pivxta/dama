@@ -1,6 +1,5 @@
 use crate::{
-    ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen, FenError, FenParseError, File,
-    Move, MoveKind, Piece, Rank, Square, SquareSet, SquareSets, ToMove,
+    zobrist::Zobrist, ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen, FenError, FenParseError, File, Move, MoveKind, Piece, Rank, Square, SquareSet, SquareSets, ToMove
 };
 use core::fmt;
 use std::str::FromStr;
@@ -15,6 +14,7 @@ pub enum Variant {
 
 #[derive(Clone, Debug, Eq)]
 pub struct Position {
+    zobrist: Zobrist,
     occupied: SquareSet,
     pieces: ByPiece<SquareSet>,
     colors: ByColor<SquareSet>,
@@ -68,15 +68,16 @@ impl PartialEq for Position {
     fn eq(&self, other: &Self) -> bool {
         self.colors == other.colors
             && self.pieces == other.pieces
-            && self.en_passant == other.en_passant
+            && self.castling == other.castling
             && self.side_to_move == other.side_to_move
+            && self.legal_en_passant() == other.legal_en_passant()
     }
 }
 
 impl Position {
     #[inline]
     pub fn new_initial() -> Self {
-        Self {
+        let mut position = Self {
             pieces: INITIAL_PIECES,
             colors: INITIAL_COLORS,
             occupied: INITIAL_OCCUPIED,
@@ -88,13 +89,16 @@ impl Position {
             halfmove_clock: 0,
             fullmove_number: 1,
             variant: Variant::Standard,
-        }
+            zobrist: Zobrist::new()
+        };
+        position.update_hash();
+        position
     }
 
     #[inline]
     pub fn new_chess960(scharnagl_number: u32) -> Self {
         let (pieces, castling) = initial_chess960(scharnagl_number);
-        Self {
+        let mut position = Self {
             pieces,
             castling,
             colors: INITIAL_COLORS,
@@ -106,7 +110,10 @@ impl Position {
             halfmove_clock: 0,
             fullmove_number: 1,
             variant: Variant::Chess960,
-        }
+            zobrist: Zobrist::new()
+        };
+        position.update_hash();
+        position
     }
 
     pub fn from_fen(fen: &str) -> Result<Self, FenError> {
@@ -116,6 +123,11 @@ impl Position {
     #[inline]
     pub fn variant(&self) -> Variant {
         self.variant
+    }
+
+    #[inline]
+    pub fn hash(&self) -> u64 {
+        self.zobrist.get()
     }
 
     #[inline]
@@ -501,8 +513,8 @@ impl Position {
             self.fullmove_number += 1;
         }
 
-        self.side_to_move = !self.side_to_move;
-        self.en_passant = None;
+        self.toggle_side_to_move();
+        self.set_en_passant(None);
 
         if let Some(king) = self.our_king() {
             self.update_checkers_and_pinners(king);
@@ -533,7 +545,7 @@ impl Position {
                     let captured = self.piece_at(mv.to);
                     if let Some(captured) = captured {
                         if captured == Piece::Rook && mv.to.rank() == self.their_backrank() {
-                            self.castling[them].remove(mv.to.file());
+                            self.remove_castling(them, mv.to.file());
                         }
                         self.grab_piece(mv.to, them, captured);
                     }
@@ -546,9 +558,9 @@ impl Position {
                     }
 
                     match moved {
-                        Piece::King => self.castling[us] = Castling::NONE,
+                        Piece::King => self.clear_castling(us),
                         Piece::Rook if mv.from.rank() == self.our_backrank() => {
-                            self.castling[us].remove(mv.from.file());
+                            self.remove_castling(us, mv.from.file());
                         }
                         _ => {}
                     }
@@ -557,7 +569,7 @@ impl Position {
                 }
             }
             MoveKind::Castles { rook } => {
-                self.castling[us] = Castling::NONE;
+                self.clear_castling(us);
                 self.grab_piece(mv.from, us, Piece::King);
                 self.grab_piece(rook, us, Piece::Rook);
                 self.put_piece(mv.to, us, Piece::King);
@@ -589,8 +601,8 @@ impl Position {
             self.fullmove_number += 1;
         }
 
-        self.side_to_move = them;
-        self.en_passant = ep_square;
+        self.toggle_side_to_move();
+        self.set_en_passant(ep_square);
 
         if let Some(king) = self.our_king() {
             self.update_checkers_and_pinners(king);
@@ -603,6 +615,7 @@ impl Position {
         self.pieces[piece].insert(sq);
         self.colors[color].insert(sq);
         self.occupied.insert(sq);
+        self.zobrist.toggle_piece(color, piece, sq);
     }
 
     #[inline]
@@ -610,6 +623,44 @@ impl Position {
         self.pieces[piece].toggle(sq);
         self.colors[color].toggle(sq);
         self.occupied.toggle(sq);
+        self.zobrist.toggle_piece(color, piece, sq);
+    }
+
+    #[inline]
+    fn clear_castling(&mut self, color: Color) {
+        if let Some(file) = self.castling[color].queen_side {
+            self.zobrist.toggle_castling(color, file);
+        }
+        if let Some(file) = self.castling[color].king_side {
+            self.zobrist.toggle_castling(color, file);
+        }
+
+        self.castling[color].queen_side = None;
+        self.castling[color].king_side = None;
+    }
+
+    #[inline]
+    fn remove_castling(&mut self, color: Color, file: File) {
+        if self.castling[color].remove(file) {
+            self.zobrist.toggle_castling(color, file);
+        }
+    }
+
+    #[inline]
+    fn toggle_side_to_move(&mut self) {
+        self.side_to_move = !self.side_to_move;
+        self.zobrist.toggle_side_to_move();
+    }
+
+    #[inline]
+    fn set_en_passant(&mut self, ep_square: Option<Square>) {
+        if let Some(old_ep_square) = self.en_passant {
+            self.zobrist.toggle_en_passant(old_ep_square);
+        }
+        if let Some(ep_square) = ep_square {
+            self.zobrist.toggle_en_passant(ep_square);
+        }
+        self.en_passant = ep_square;
     }
 
     #[inline]
@@ -620,7 +671,37 @@ impl Position {
     }
 
     #[inline]
-    pub fn update_checkers_and_pinners(&mut self, king: Square) {
+    fn update_hash(&mut self) {
+        self.zobrist = Zobrist::new();
+
+        if self.side_to_move() == Color::Black {
+            self.zobrist.toggle_side_to_move();
+        }
+
+        if let Some(ep_square) = self.legal_en_passant() {
+            self.zobrist.toggle_en_passant(ep_square);
+        }
+
+        for color in Color::ALL {
+            if let Some(file) = self.castling[color].queen_side {
+                self.zobrist.toggle_castling(color, file);
+            }
+            if let Some(file) = self.castling[color].king_side {
+                self.zobrist.toggle_castling(color, file);
+            }
+        }
+
+        for color in Color::ALL {
+            for piece in Piece::ALL {
+                for square in self.colored(color) & self.pieces(piece) {
+                    self.zobrist.toggle_piece(color, piece, square);
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn update_checkers_and_pinners(&mut self, king: Square) {
         self.pinned = SquareSet::EMPTY;
         self.checkers = self.them()
             & ((SquareSet::knight_moves(king) & self.knights())
@@ -981,9 +1062,11 @@ impl Setup {
             fullmove_number: self.fullmove_number,
             checkers: SquareSet::EMPTY,
             pinned: SquareSet::EMPTY,
+            zobrist: Zobrist::new(),
         };
         position.validate()?;
         position.update_checkers_and_pinners(position.our_king().unwrap());
+        position.update_hash();
         Ok(position)
     }
 
@@ -1159,15 +1242,12 @@ const INITIAL_OCCUPIED: SquareSet = SquareSet::from_bits(0xffff00000000ffff);
 #[cfg(test)]
 mod tests {
 
+    use std::str::FromStr;
+
+    use criterion::SamplingMode;
+
     use crate::{
-        position::Setup,
-        Castling, Color,
-        FenError::*,
-        File,
-        InvalidPositionError::{self, *},
-        Move, Piece, Position,
-        Square::*,
-        SquareSet, Variant,
+        position::Setup, Castling, Color, FenError::*, File, InvalidPositionError::{self, *}, Move, Piece, Position, SanMove, Square::*, SquareSet, UciMove, Variant
     };
 
     #[test]
@@ -1329,5 +1409,94 @@ mod tests {
                 queen_side: Some(File::A),
             }
         );
+    }
+
+    #[test]
+    fn hash_game1() {
+        let moves = [
+            "Nf3", "d5", "g3", "c5", "Bg2", "Nc6", "d4", "e6", "O-O", "cxd4", "Nxd4", "Nge7", "c4",
+            "Nxd4", "Qxd4", "Nc6", "Qd1", "d4", "e3", "Bc5", "exd4", "Bxd4", "Nc3", "O-O", "Nb5",
+            "Bb6", "b3", "a6", "Nc3", "Bd4", "Bb2", "e5", "Qd2", "Be6", "Nd5", "b5", "cxb5",
+            "axb5", "Nf4", "exf4", "Bxc6", "Bxb2", "Qxb2", "Rb8", "Rfd1", "Qb6", "Bf3", "fxg3",
+            "hxg3", "b4", "a4", "bxa3", "Rxa3", "g6", "Qd4", "Qb5", "b4", "Qxb4", "Qxb4", "Rxb4",
+            "Ra8", "Rxa8", "Bxa8", "g5", "Bd5", "Bf5", "Rc1", "Kg7", "Rc7", "Bg6", "Rc4", "Rb1+",
+            "Kg2", "Re1", "Rb4", "h5", "Ra4", "Re5", "Bf3", "Kh6", "Kg1", "Re6", "Rc4", "g4",
+            "Bd5", "Rd6", "Bb7", "Kg5", "f3", "f5", "fxg4", "hxg4", "Rb4", "Bf7", "Kf2", "Rd2+",
+            "Kg1", "Kf6", "Rb6+", "Kg5", "Rb4", "Be6", "Ra4", "Rb2", "Ba8", "Kf6", "Rf4", "Ke5",
+            "Rf2", "Rxf2", "Kxf2", "Bd5", "Bxd5", "Kxd5", "Ke3", "Ke5",
+        ]; 
+
+        let mut position = Position::new_initial();
+
+        for san in moves.into_iter().map(SanMove::from_str).map(Result::unwrap) {
+            position.play(&san).unwrap();
+        }
+
+        assert_eq!(
+            position.hash(),
+            Position::from_fen("8/8/8/4kp2/6p1/4K1P1/8/8 w - - 2 59").unwrap().hash()
+        );
+    }
+
+    #[test]
+    fn hash_game2() {
+        let moves = [
+            "e4", "e5", "Nf3", "Nf6", "a4", "c6", "b4", "Qc7", "Qb3", "Ng6", "Rb1", "d5", "Ng3",
+            "O-O-O", "Bd3", "dxe4", "Nxe4", "Nf4", "Nxf6", "gxf6", "Bf5+", "Kb8", "g3", "Nd5",
+            "O-O", "Nxb4", "d4", "c5", "dxe5", "b6", "Rfd1", "Qc6", "exf6", "Bb7", "Bg4", "c4",
+            "Qc3", "a5", "Rxd8+", "Rxd8", "Qe5+", "Ka7", "Qf5", "Bc5", "Bc3", "Nxc2", "Rc1", "Ne3",
+            "fxe3", "Bxe3+", "Kg2", "Bxc1", "Kh3", "Rd3", "Bd4", "Qd5",
+        ];
+        let mut position =
+            Position::from_fen("bqrkrbnn/pppppppp/8/8/8/8/PPPPPPPP/BQRKRBNN w KQkq - 0 1").unwrap();
+
+        for san in moves.into_iter().map(SanMove::from_str).map(Result::unwrap) {
+            position.play(&san).unwrap();
+        }
+
+        assert_eq!(
+            position.hash(),
+            Position::from_fen("8/kb3p1p/1p3P2/p2q1Q2/P1pB2B1/3r1NPK/7P/2b5 w - - 4 29").unwrap().hash()
+        );
+    }
+
+    #[test]
+    fn hash_transpositions() {
+        let position = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
+
+        const MOVES: &[[[&str; 4]; 2]] = &[
+            [["a2a4", "e8h8", "e1h1", "e7d8"], ["e1h1", "e8h8", "a2a4", "e7d8"]],
+            [["h1g1", "f6g4", "d2h6", "b4b3"], ["h1g1", "b4b3", "d2h6", "f6g4"]],
+            [["e1d1", "f6d5", "b2b3", "a8c8"], ["e1d1", "a8c8", "b2b3", "f6d5"]],
+            [["e2c4", "h8h5", "f3f5", "e7d8"], ["f3f5", "h8h5", "e2c4", "e7d8"]],
+            [["a2a3", "h8h5", "c3b1", "a8d8"], ["a2a3", "a8d8", "c3b1", "h8h5"]],
+            [["e2d3", "c7c6", "g2g4", "h8h6"], ["e2d3", "h8h6", "g2g4", "c7c6"]],
+            [["e1d1", "e8f8", "e5c6", "h8h5"], ["e1d1", "h8h5", "e5c6", "e8f8"]],
+            [["g2h3", "e7d8", "e5g4", "b6c8"], ["e5g4", "b6c8", "g2h3", "e7d8"]],
+            [["b2b3", "e8f8", "g2g3", "a6b7"], ["b2b3", "a6b7", "g2g3", "e8f8"]],
+            [["e5g4", "e8d8", "d2e3", "a6d3"], ["d2e3", "a6d3", "e5g4", "e8d8"]],
+            [["e5g4", "h8h5", "f3f5", "e6f5"], ["f3f5", "e6f5", "e5g4", "h8h5"]],
+            [["e2c4", "h8f8", "d2h6", "b4b3"], ["e2c4", "b4b3", "d2h6", "h8f8"]],
+            [["a1c1", "c7c5", "c3a4", "a6e2"], ["c3a4", "c7c5", "a1c1", "a6e2"]],
+            [["g2g3", "a8c8", "e5d3", "e7f8"], ["e5d3", "a8c8", "g2g3", "e7f8"]],
+            [["c3a4", "f6g8", "e1d1", "a8c8"], ["c3a4", "a8c8", "e1d1", "f6g8"]],
+            [["e5d3", "a6b7", "g2g3", "h8h6"], ["e5d3", "h8h6", "g2g3", "a6b7"]],
+            [["e2d3", "g6g5", "d2f4", "b6d5"], ["d2f4", "g6g5", "e2d3", "b6d5"]],
+            [["f3e3", "e8h8", "a2a4", "a8c8"], ["a2a4", "a8c8", "f3e3", "e8h8"]],
+            [["d5d6", "e8h8", "f3f6", "a6c4"], ["f3f6", "a6c4", "d5d6", "e8h8"]],
+            [["f3h5", "f6h7", "c3b1", "g7f6"], ["c3b1", "f6h7", "f3h5", "g7f6"]],
+        ];
+
+        for (n, [moves1, moves2]) in MOVES.iter().enumerate() {
+            let mut pos1 = position.clone();
+            let mut pos2 = position.clone();
+            for mv in moves1 {
+                pos1.play(&mv.parse::<UciMove>().unwrap()).unwrap();
+            }
+            for mv in moves2 {
+                pos2.play(&mv.parse::<UciMove>().unwrap()).unwrap();
+            }
+            assert_eq!(pos1.hash(), pos2.hash(), "transposition failed at test {}", n + 1);
+        }
     }
 }

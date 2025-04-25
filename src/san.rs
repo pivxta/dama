@@ -127,14 +127,12 @@ impl SanMove {
             suffix,
         })
     }
-    /*
-        #[inline]
-        pub fn from_move(mv: Move, position: &Position) -> SanMove {
-            match mv.kind {
-                Castl
-            }
-        }
-    */
+
+    #[inline]
+    pub fn from_move(mv: Move, position: &Position) -> SanMove {
+        todo!();
+    }
+
     #[inline]
     pub fn moved_piece(&self) -> Piece {
         match self.kind {

@@ -8,6 +8,7 @@ pub mod position;
 pub mod san;
 mod squaresets;
 mod uci;
+mod zobrist;
 
 pub use dama_core::{
     castling::{Castling, CastlingSide},

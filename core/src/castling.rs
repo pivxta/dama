@@ -34,13 +34,16 @@ impl Castling {
     }
 
     #[inline]
-    pub fn remove(&mut self, file: File) {
+    pub fn remove(&mut self, file: File) -> bool {
         if self.king_side == Some(file) {
             self.king_side = None;
+            return true;
         }
         if self.queen_side == Some(file) {
             self.queen_side = None;
+            return true;
         }
+        false
     }
 
     #[inline]
