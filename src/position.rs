@@ -247,6 +247,11 @@ impl Position {
     }
 
     #[inline]
+    pub fn kings(&self) -> SquareSet {
+        self.pieces(Piece::King)
+    }
+
+    #[inline]
     pub fn colored(&self, color: Color) -> SquareSet {
         self.colors[color]
     }
