@@ -129,7 +129,7 @@ impl SanMove {
     }
 
     #[inline]
-    pub fn from_move(mv: Move, position: &Position) -> SanMove {
+    pub fn from_move(_mv: Move, _position: &Position) -> SanMove {
         todo!();
     }
 

@@ -486,6 +486,11 @@ impl Position {
     }
 
     #[inline]
+    pub fn is_quiet(&self, mv: &Move) -> bool {
+        !self.is_capture(mv)
+    }
+
+    #[inline]
     pub fn setup(&self) -> Setup {
         Setup {
             pieces: self.pieces,
