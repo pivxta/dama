@@ -555,7 +555,7 @@ impl Position {
 
     #[inline]
     pub fn skip(&mut self) {
-        self.halfmove_clock += 1;
+        self.halfmove_clock = 0;
 
         if self.side_to_move == Color::Black {
             self.fullmove_number += 1;
