@@ -1,4 +1,4 @@
-use crate::{ByColor, ByPiece, BySquare, File, Color, Square, Piece};
+use crate::{ByColor, ByPiece, BySquare, Color, File, Piece, Square};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Zobrist(u64);
@@ -8,7 +8,7 @@ impl Zobrist {
     pub fn new() -> Self {
         Self::default()
     }
-   
+
     #[inline]
     pub fn toggle_side_to_move(&mut self) {
         self.0 ^= SIDE_TO_MOVE;

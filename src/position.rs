@@ -1,5 +1,6 @@
 use crate::{
-    zobrist::Zobrist, ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen, FenError, FenParseError, File, Move, MoveKind, Piece, Rank, Square, SquareSet, SquareSets, ToMove
+    zobrist::Zobrist, ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen, FenError,
+    FenParseError, File, Move, MoveKind, Piece, Rank, Square, SquareSet, SquareSets, ToMove,
 };
 use core::fmt;
 use std::str::FromStr;
@@ -89,7 +90,7 @@ impl Position {
             halfmove_clock: 0,
             fullmove_number: 1,
             variant: Variant::Standard,
-            zobrist: Zobrist::new()
+            zobrist: Zobrist::new(),
         };
         position.update_hash();
         position
@@ -110,7 +111,7 @@ impl Position {
             halfmove_clock: 0,
             fullmove_number: 1,
             variant: Variant::Chess960,
-            zobrist: Zobrist::new()
+            zobrist: Zobrist::new(),
         };
         position.update_hash();
         position
@@ -296,6 +297,43 @@ impl Position {
     #[inline]
     pub fn pinned(&self) -> SquareSet {
         self.pinned
+    }
+
+    #[inline]
+    pub fn has_non_pawn_material(&self, color: Color) -> bool {
+        !self.colored(color).is_subset(self.pawns() | self.kings())
+    }
+
+    /// Returns whether there is no sequence of moves for `color` that could result in checkmate.
+    #[inline]
+    pub fn has_insufficient_material(&self, color: Color) -> bool {
+        let pieces = self.colored(color);
+        if !(pieces & (self.queens() | self.rooks() | self.pawns())).is_empty() {
+            return false;
+        }
+
+        if !(pieces & self.knights()).is_empty() {
+            return pieces.count() <= 2
+                && self
+                    .colored(!color)
+                    .without(self.kings() | self.queens())
+                    .is_empty();
+        }
+
+        if !(pieces & self.bishops()).is_empty() {
+            return ((self.bishops() & SquareSet::DARK_SQUARES).is_empty()
+                || (self.bishops() & SquareSet::LIGHT_SQUARES).is_empty())
+                && self.knights().is_empty()
+                && self.pawns().is_empty();
+        }
+
+        false
+    }
+
+    /// Returns whether there is no sequence of moves that could result in checkmate.
+    #[inline]
+    pub fn is_insufficient_material(&self) -> bool {
+        self.has_insufficient_material(Color::White) && self.has_insufficient_material(Color::Black)
     }
 
     #[inline]
@@ -1254,10 +1292,15 @@ mod tests {
 
     use std::str::FromStr;
 
-    use criterion::SamplingMode;
-
     use crate::{
-        position::Setup, Castling, Color, FenError::*, File, InvalidPositionError::{self, *}, Move, Piece, Position, SanMove, Square::*, SquareSet, UciMove, Variant
+        position::Setup,
+        Castling, Color,
+        FenError::*,
+        File,
+        InvalidPositionError::{self, *},
+        Move, Piece, Position, SanMove,
+        Square::*,
+        SquareSet, UciMove, Variant,
     };
 
     #[test]
@@ -1434,7 +1477,7 @@ mod tests {
             "Bd5", "Rd6", "Bb7", "Kg5", "f3", "f5", "fxg4", "hxg4", "Rb4", "Bf7", "Kf2", "Rd2+",
             "Kg1", "Kf6", "Rb6+", "Kg5", "Rb4", "Be6", "Ra4", "Rb2", "Ba8", "Kf6", "Rf4", "Ke5",
             "Rf2", "Rxf2", "Kxf2", "Bd5", "Bxd5", "Kxd5", "Ke3", "Ke5",
-        ]; 
+        ];
 
         let mut position = Position::new_initial();
 
@@ -1444,7 +1487,9 @@ mod tests {
 
         assert_eq!(
             position.hash(),
-            Position::from_fen("8/8/8/4kp2/6p1/4K1P1/8/8 w - - 2 59").unwrap().hash()
+            Position::from_fen("8/8/8/4kp2/6p1/4K1P1/8/8 w - - 2 59")
+                .unwrap()
+                .hash()
         );
     }
 
@@ -1466,35 +1511,100 @@ mod tests {
 
         assert_eq!(
             position.hash(),
-            Position::from_fen("8/kb3p1p/1p3P2/p2q1Q2/P1pB2B1/3r1NPK/7P/2b5 w - - 4 29").unwrap().hash()
+            Position::from_fen("8/kb3p1p/1p3P2/p2q1Q2/P1pB2B1/3r1NPK/7P/2b5 w - - 4 29")
+                .unwrap()
+                .hash()
         );
     }
 
     #[test]
     fn hash_transpositions() {
-        let position = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
+        let position = Position::from_fen(
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        )
+        .unwrap();
 
         const MOVES: &[[[&str; 4]; 2]] = &[
-            [["a2a4", "e8h8", "e1h1", "e7d8"], ["e1h1", "e8h8", "a2a4", "e7d8"]],
-            [["h1g1", "f6g4", "d2h6", "b4b3"], ["h1g1", "b4b3", "d2h6", "f6g4"]],
-            [["e1d1", "f6d5", "b2b3", "a8c8"], ["e1d1", "a8c8", "b2b3", "f6d5"]],
-            [["e2c4", "h8h5", "f3f5", "e7d8"], ["f3f5", "h8h5", "e2c4", "e7d8"]],
-            [["a2a3", "h8h5", "c3b1", "a8d8"], ["a2a3", "a8d8", "c3b1", "h8h5"]],
-            [["e2d3", "c7c6", "g2g4", "h8h6"], ["e2d3", "h8h6", "g2g4", "c7c6"]],
-            [["e1d1", "e8f8", "e5c6", "h8h5"], ["e1d1", "h8h5", "e5c6", "e8f8"]],
-            [["g2h3", "e7d8", "e5g4", "b6c8"], ["e5g4", "b6c8", "g2h3", "e7d8"]],
-            [["b2b3", "e8f8", "g2g3", "a6b7"], ["b2b3", "a6b7", "g2g3", "e8f8"]],
-            [["e5g4", "e8d8", "d2e3", "a6d3"], ["d2e3", "a6d3", "e5g4", "e8d8"]],
-            [["e5g4", "h8h5", "f3f5", "e6f5"], ["f3f5", "e6f5", "e5g4", "h8h5"]],
-            [["e2c4", "h8f8", "d2h6", "b4b3"], ["e2c4", "b4b3", "d2h6", "h8f8"]],
-            [["a1c1", "c7c5", "c3a4", "a6e2"], ["c3a4", "c7c5", "a1c1", "a6e2"]],
-            [["g2g3", "a8c8", "e5d3", "e7f8"], ["e5d3", "a8c8", "g2g3", "e7f8"]],
-            [["c3a4", "f6g8", "e1d1", "a8c8"], ["c3a4", "a8c8", "e1d1", "f6g8"]],
-            [["e5d3", "a6b7", "g2g3", "h8h6"], ["e5d3", "h8h6", "g2g3", "a6b7"]],
-            [["e2d3", "g6g5", "d2f4", "b6d5"], ["d2f4", "g6g5", "e2d3", "b6d5"]],
-            [["f3e3", "e8h8", "a2a4", "a8c8"], ["a2a4", "a8c8", "f3e3", "e8h8"]],
-            [["d5d6", "e8h8", "f3f6", "a6c4"], ["f3f6", "a6c4", "d5d6", "e8h8"]],
-            [["f3h5", "f6h7", "c3b1", "g7f6"], ["c3b1", "f6h7", "f3h5", "g7f6"]],
+            [
+                ["a2a4", "e8h8", "e1h1", "e7d8"],
+                ["e1h1", "e8h8", "a2a4", "e7d8"],
+            ],
+            [
+                ["h1g1", "f6g4", "d2h6", "b4b3"],
+                ["h1g1", "b4b3", "d2h6", "f6g4"],
+            ],
+            [
+                ["e1d1", "f6d5", "b2b3", "a8c8"],
+                ["e1d1", "a8c8", "b2b3", "f6d5"],
+            ],
+            [
+                ["e2c4", "h8h5", "f3f5", "e7d8"],
+                ["f3f5", "h8h5", "e2c4", "e7d8"],
+            ],
+            [
+                ["a2a3", "h8h5", "c3b1", "a8d8"],
+                ["a2a3", "a8d8", "c3b1", "h8h5"],
+            ],
+            [
+                ["e2d3", "c7c6", "g2g4", "h8h6"],
+                ["e2d3", "h8h6", "g2g4", "c7c6"],
+            ],
+            [
+                ["e1d1", "e8f8", "e5c6", "h8h5"],
+                ["e1d1", "h8h5", "e5c6", "e8f8"],
+            ],
+            [
+                ["g2h3", "e7d8", "e5g4", "b6c8"],
+                ["e5g4", "b6c8", "g2h3", "e7d8"],
+            ],
+            [
+                ["b2b3", "e8f8", "g2g3", "a6b7"],
+                ["b2b3", "a6b7", "g2g3", "e8f8"],
+            ],
+            [
+                ["e5g4", "e8d8", "d2e3", "a6d3"],
+                ["d2e3", "a6d3", "e5g4", "e8d8"],
+            ],
+            [
+                ["e5g4", "h8h5", "f3f5", "e6f5"],
+                ["f3f5", "e6f5", "e5g4", "h8h5"],
+            ],
+            [
+                ["e2c4", "h8f8", "d2h6", "b4b3"],
+                ["e2c4", "b4b3", "d2h6", "h8f8"],
+            ],
+            [
+                ["a1c1", "c7c5", "c3a4", "a6e2"],
+                ["c3a4", "c7c5", "a1c1", "a6e2"],
+            ],
+            [
+                ["g2g3", "a8c8", "e5d3", "e7f8"],
+                ["e5d3", "a8c8", "g2g3", "e7f8"],
+            ],
+            [
+                ["c3a4", "f6g8", "e1d1", "a8c8"],
+                ["c3a4", "a8c8", "e1d1", "f6g8"],
+            ],
+            [
+                ["e5d3", "a6b7", "g2g3", "h8h6"],
+                ["e5d3", "h8h6", "g2g3", "a6b7"],
+            ],
+            [
+                ["e2d3", "g6g5", "d2f4", "b6d5"],
+                ["d2f4", "g6g5", "e2d3", "b6d5"],
+            ],
+            [
+                ["f3e3", "e8h8", "a2a4", "a8c8"],
+                ["a2a4", "a8c8", "f3e3", "e8h8"],
+            ],
+            [
+                ["d5d6", "e8h8", "f3f6", "a6c4"],
+                ["f3f6", "a6c4", "d5d6", "e8h8"],
+            ],
+            [
+                ["f3h5", "f6h7", "c3b1", "g7f6"],
+                ["c3b1", "f6h7", "f3h5", "g7f6"],
+            ],
         ];
 
         for (n, [moves1, moves2]) in MOVES.iter().enumerate() {
@@ -1506,7 +1616,23 @@ mod tests {
             for mv in moves2 {
                 pos2.play(&mv.parse::<UciMove>().unwrap()).unwrap();
             }
-            assert_eq!(pos1.hash(), pos2.hash(), "transposition failed at test {}", n + 1);
+            assert_eq!(
+                pos1.hash(),
+                pos2.hash(),
+                "transposition failed at test {}",
+                n + 1
+            );
         }
+    }
+
+    #[test]
+    fn insufficient_material() {
+        assert!(!Position::new_initial().is_insufficient_material());
+        assert!(Position::from_fen("8/8/3b4/6B1/8/1K6/8/k7 w - - 0 1")
+            .unwrap()
+            .is_insufficient_material());
+        assert!(!Position::from_fen("8/8/8/7k/8/6PK/6PP/1b6 w - - 0 1")
+            .unwrap()
+            .has_insufficient_material(Color::Black));
     }
 }

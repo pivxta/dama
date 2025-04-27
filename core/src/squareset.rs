@@ -20,8 +20,8 @@ impl SquareSet {
         .union(Self::from_rank(Rank::First))
         .union(Self::from_rank(Rank::Eighth));
 
-    pub const LIGHT_SQUARES: Self = Self::from_bits(0xaaaaaaaaaaaaaaaa);
-    pub const DARK_SQUARES: Self = Self::from_bits(0x5555555555555555);
+    pub const LIGHT_SQUARES: Self = Self::from_bits(0x55aa55aa55aa55aa);
+    pub const DARK_SQUARES: Self = Self::from_bits(0xaa55aa55aa55aa55);
 
     #[inline]
     pub const fn from_bits(bits: u64) -> Self {
