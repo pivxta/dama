@@ -129,8 +129,28 @@ impl SanMove {
     }
 
     #[inline]
-    pub fn from_move(_mv: Move, _position: &Position) -> SanMove {
-        todo!();
+    pub fn from_move_nosuffix(mv: Move, position: &Position) -> Result<SanMove, SanError> {
+        Ok(SanMove {
+            kind: SanKind::from_move(mv, position)?,
+            suffix: None
+        })
+    }
+
+    #[inline]
+    pub fn from_move(mv: Move, position: &Position) -> Result<SanMove, SanError> {
+        let kind = SanKind::from_move(mv, position)?;
+
+        let mut new_position = position.clone();
+        new_position.play_unchecked(&mv);
+        let suffix = if new_position.is_in_check() && new_position.legal_moves().is_empty() {
+            Some(Suffix::Checkmate)
+        } else if new_position.is_in_check() {
+            Some(Suffix::Check)
+        } else {
+            None
+        };
+
+        Ok(SanMove { kind, suffix })
     }
 
     #[inline]
@@ -154,6 +174,56 @@ impl SanMove {
         match self.kind {
             SanKind::Simple { promotion, .. } => promotion,
             _ => None,
+        }
+    }
+}
+
+impl SanKind {
+    fn from_move(mv: Move, position: &Position) -> Result<SanKind, SanError> {
+        if !position.is_legal(&mv) {
+            return Err(SanError::IllegalMove);
+        }
+
+        match mv.kind {
+            MoveKind::Castles { .. } if mv.from.file() < mv.to.file() => {
+                Ok(SanKind::Castling(CastlingSide::King))
+            }
+            MoveKind::Castles { .. } => Ok(SanKind::Castling(CastlingSide::Queen)),
+            _ => {
+                // We know the move is legal, so there is no need to worry about the unwrap
+                let piece = position.piece_at(mv.from).unwrap();
+                let is_capture = position.them().contains(mv.to);
+
+                let (from_file, from_rank) = if piece == Piece::Pawn && is_capture {
+                    (Some(mv.from.file()), None)
+                } else if piece == Piece::Pawn {
+                    (None, None)
+                } else {
+                    let mut ambiguities = piece_moves(piece, mv.to, position.occupied())
+                        .without(mv.from)
+                        & position.pieces(piece)
+                        & position.us();
+                    ambiguities.retain(|from| position.is_safe(&Move::new_normal(from, mv.to)));
+                    let ambiguous = !ambiguities.is_empty();
+                    let ambiguous_file =
+                        !(ambiguities & SquareSet::from(mv.from.file())).is_empty();
+                    let ambiguous_rank =
+                        !(ambiguities & SquareSet::from(mv.from.rank())).is_empty();
+                    let from_rank = ambiguous_file.then(|| mv.from.rank());
+                    let from_file =
+                        (ambiguous && (!ambiguous_file || ambiguous_rank)).then(|| mv.from.file());
+                    (from_file, from_rank)
+                };
+
+                Ok(SanKind::Simple {
+                    piece,
+                    from_rank,
+                    from_file,
+                    is_capture,
+                    to: mv.to,
+                    promotion: mv.promotion(),
+                })
+            }
         }
     }
 }
@@ -380,9 +450,77 @@ mod tests {
 
     use crate::{
         san::{SanKind, Suffix},
-        CastlingSide, File, Piece, Position, Rank, SanMove,
+        CastlingSide, File, Move, Piece, Position, Rank, SanMove,
         Square::*,
+        ToMove,
     };
+
+    #[test]
+    fn san_from_move_ambiguity() {
+        let position = Position::from_fen("K7/8/6q1/8/4P3/8/2q3q1/7k b - - 0 1").unwrap();
+        assert_eq!(
+            SanMove::from_move(Move::new_normal(C2, E4), &position)
+                .unwrap()
+                .to_string(),
+            "Qcxe4+"
+        );
+        assert_eq!(
+            SanMove::from_move(Move::new_normal(G2, E4), &position)
+                .unwrap()
+                .to_string(),
+            "Qg2xe4+"
+        );
+        assert_eq!(
+            SanMove::from_move(Move::new_normal(G6, E4), &position)
+                .unwrap()
+                .to_string(),
+            "Q6xe4+"
+        );
+
+        let position = Position::from_fen("8/k7/8/8/1N6/3r4/1N6/7K w - - 0 1").unwrap();
+        assert_eq!(
+            SanMove::from_move(Move::new_normal(B2, D3), &position)
+                .unwrap()
+                .to_string(),
+            "N2xd3"
+        );
+        assert_eq!(
+            SanMove::from_move(Move::new_normal(B4, D3), &position)
+                .unwrap()
+                .to_string(),
+            "N4xd3"
+        );
+    }
+
+    #[test]
+    fn san_from_move_roundtrip() {
+        let san_moves = [
+            "e4", "e5", "d3", "f5", "exf5", "Nf6", "Nf3", "Nc6", "Be2", "d5", "c3", "Bd6", "O-O",
+            "Bxf5", "Nbd2", "Qd7", "Nh4", "Be6", "b4", "O-O-O", "Nhf3", "h5", "a4", "e4", "dxe4",
+            "dxe4", "Nxe4", "Nxe4", "Qc2", "Bf5", "Qb2", "g5", "Nxg5", "Nxg5", "Bxg5", "Rdg8",
+            "f4", "h4", "Rad1", "Qe8", "Rfe1", "Qe3+", "Kh1", "h3", "Bf3", "hxg2+", "Bxg2", "Qb6",
+            "a5", "Qb5", "Bf1", "Qa4", "Ra1", "Qc2", "Qxc2", "Bxc2", "Rec1", "Be4+", "Kg1", "Rxh2",
+            "Kxh2", "Rxg5", "Kh3", "Bxf4", "Re1", "Bf5+", "Kh4", "Rg4+", "Kh5", "Ne5", "Be2",
+            "Bg6#",
+        ];
+
+        let mut position = Position::new_initial();
+        let mut moves = vec![];
+        for mv in san_moves {
+            let mv = mv.parse::<SanMove>().unwrap().to_move(&position).unwrap();
+            moves.push(mv);
+            position.play(&mv).unwrap();
+        }
+
+        let mut position = Position::new_initial();
+        let mut rebuilt_san_moves = vec![];
+        for mv in moves {
+            rebuilt_san_moves.push(SanMove::from_move(mv, &position).unwrap().to_string());
+            position.play(&mv).unwrap();
+        }
+
+        assert_eq!(san_moves.as_slice(), rebuilt_san_moves.as_slice());
+    }
 
     #[test]
     fn san_pawn() {

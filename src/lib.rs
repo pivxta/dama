@@ -1,5 +1,7 @@
 pub mod fen;
 mod game;
+#[doc(hidden)]
+pub mod helpers;
 mod movegen;
 mod mv;
 mod perft;

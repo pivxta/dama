@@ -1,6 +1,7 @@
 use crate::{
-    zobrist::Zobrist, ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen, FenError,
-    FenParseError, File, Move, MoveKind, Piece, Rank, Square, SquareSet, SquareSets, ToMove,
+    by_piece, zobrist::Zobrist, ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen,
+    FenError, FenParseError, File, Move, MoveKind, Piece, Rank, Square, SquareSet, SquareSets,
+    ToMove,
 };
 use core::fmt;
 use std::str::FromStr;
@@ -1170,21 +1171,22 @@ impl fmt::Display for Position {
 
 fn piece_char(color: Color, piece: Piece) -> char {
     match (color, piece) {
-        (Color::Black, Piece::Pawn) => '♙',
-        (Color::Black, Piece::Knight) => '♘',
-        (Color::Black, Piece::Bishop) => '♗',
-        (Color::Black, Piece::Rook) => '♖',
-        (Color::Black, Piece::Queen) => '♕',
-        (Color::Black, Piece::King) => '♔',
-        (Color::White, Piece::Pawn) => '♟',
-        (Color::White, Piece::Knight) => '♞',
-        (Color::White, Piece::Bishop) => '♝',
-        (Color::White, Piece::Rook) => '♜',
-        (Color::White, Piece::Queen) => '♛',
-        (Color::White, Piece::King) => '♚',
+        (Color::Black, Piece::Pawn) => 'p',
+        (Color::Black, Piece::Knight) => 'n',
+        (Color::Black, Piece::Bishop) => 'b',
+        (Color::Black, Piece::Rook) => 'r',
+        (Color::Black, Piece::Queen) => 'q',
+        (Color::Black, Piece::King) => 'k',
+        (Color::White, Piece::Pawn) => 'P',
+        (Color::White, Piece::Knight) => 'N',
+        (Color::White, Piece::Bishop) => 'B',
+        (Color::White, Piece::Rook) => 'R',
+        (Color::White, Piece::Queen) => 'Q',
+        (Color::White, Piece::King) => 'K',
     }
 }
 
+#[inline]
 fn piece_moves(piece: Piece, square: Square, occupied: SquareSet) -> SquareSet {
     match piece {
         Piece::Knight => SquareSet::knight_moves(square),
@@ -1243,14 +1245,15 @@ fn initial_chess960(seed: u32) -> (ByPiece<SquareSet>, ByColor<Castling>) {
 
     let king = free_squares.single().unwrap();
 
-    let mut pieces = ByPiece::from_array([
-        INITIAL_PIECES[Piece::Pawn],
-        SquareSet::from([knight1, knight2]),
-        SquareSet::from([bishop1, bishop2]),
-        SquareSet::from([rook1, rook2]),
-        SquareSet::from(queen),
-        SquareSet::from(king),
-    ]);
+    let mut pieces = by_piece! {
+        Pawn => INITIAL_PIECES[Piece::Pawn],
+        Knight => SquareSet::from([knight1, knight2]),
+        Bishop => SquareSet::from([bishop1, bishop2]),
+        Rook => SquareSet::from([rook1, rook2]),
+        Queen => SquareSet::from(queen),
+        King => SquareSet::from(king),
+    };
+
     let castling = Castling {
         king_side: Some(rook2.file()),
         queen_side: Some(rook1.file()),
@@ -1262,6 +1265,8 @@ fn initial_chess960(seed: u32) -> (ByPiece<SquareSet>, ByColor<Castling>) {
 
     (pieces, ByColor::from_fn(|_| castling))
 }
+
+const INITIAL_OCCUPIED: SquareSet = SquareSet::from_bits(0xffff00000000ffff);
 
 const INITIAL_PIECES: ByPiece<SquareSet> = ByPiece::from_array([
     // Pawn
@@ -1285,11 +1290,8 @@ const INITIAL_COLORS: ByColor<SquareSet> = ByColor::from_array([
     SquareSet::from_bits(0xffff000000000000),
 ]);
 
-const INITIAL_OCCUPIED: SquareSet = SquareSet::from_bits(0xffff00000000ffff);
-
 #[cfg(test)]
 mod tests {
-
     use std::str::FromStr;
 
     use crate::{

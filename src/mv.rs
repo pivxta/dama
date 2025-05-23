@@ -1,4 +1,4 @@
-use crate::{IllegalMoveError, Piece, Position, Square, UciMove, Variant};
+use crate::{IllegalMoveError, Piece, Position, SanError, SanMove, Square, UciMove, Variant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MoveKind {
@@ -75,6 +75,16 @@ impl Move {
     #[inline]
     pub fn to_uci(self, variant: Variant) -> UciMove {
         UciMove::from_move(self, variant)
+    }
+
+    #[inline]
+    pub fn to_san(self, position: &Position) -> Result<SanMove, SanError> {
+        SanMove::from_move(self, position)
+    }
+
+    #[inline]
+    pub fn to_san_nosuffix(self, position: &Position) -> Result<SanMove, SanError> {
+        SanMove::from_move_nosuffix(self, position)
     }
 }
 
