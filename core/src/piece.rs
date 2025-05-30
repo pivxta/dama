@@ -1,11 +1,10 @@
-use crate::helpers::mapped_enum;
+use crate::helpers::mapped_enum_u8;
 use std::str::FromStr;
 use thiserror::Error;
 
-mapped_enum! {
-    #[repr(u8)]
+mapped_enum_u8! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub enum Piece {
+    pub enum Piece [all: Pieces] {
         Pawn,
         Knight,
         Bishop,

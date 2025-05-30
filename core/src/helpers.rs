@@ -1,7 +1,7 @@
-macro_rules! mapped_enum {
+macro_rules! mapped_enum_u8 {
     {
         $(#[$attr:meta])*
-        $vis:vis enum $name:ident {
+        $vis:vis enum $name:ident [all: $all_name:ident] {
             $($variant:ident),*$(,)?
         }
 
@@ -13,29 +13,101 @@ macro_rules! mapped_enum {
         )?
     } => {
         $(#[$attr])*
+        #[repr(u8)]
         $vis enum $name {
             $($variant),*
         }
 
+        #[derive(Debug, Clone)]
+        pub struct $all_name(core::ops::Range<usize>);
+
         impl $name {
             pub const COUNT: usize = [$(Self::$variant),*].len();
-            pub const ALL: [Self; Self::COUNT] = [$(Self::$variant),*];
+
+            #[inline]
+            pub const fn from_index(index: usize) -> Self {
+                assert!(index < Self::COUNT);
+                unsafe { Self::from_index_unchecked(index) }
+            }
+
+            #[inline]
+            pub const fn try_from_index(index: usize) -> Option<Self> {
+                if index < Self::COUNT {
+                    unsafe { Some(Self::from_index_unchecked(index)) }
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            pub const unsafe fn from_index_unchecked(index: usize) -> Self {
+                unsafe { core::mem::transmute(index as u8) }
+            }
+
+            #[inline]
+            pub fn all() -> $all_name {
+                $all_name(0..Self::COUNT)
+            }
+        }
+
+        impl Iterator for $all_name {
+            type Item = $name;
+
+            #[inline]
+            fn next(&mut self) -> Option<$name> {
+                self.0.next().map(|idx| unsafe { $name::from_index_unchecked(idx) })
+            }
+
+            #[inline]
+            fn nth(&mut self, n: usize) -> Option<$name> {
+                self.0.nth(n).map(|idx| unsafe { $name::from_index_unchecked(idx) })
+            }
+
+            #[inline]
+            fn last(self) -> Option<$name> {
+                self.0.last().map(|idx| unsafe { $name::from_index_unchecked(idx) })
+            }
+
+            #[inline]
+            fn count(self) -> usize {
+                self.0.count()
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                self.0.size_hint()
+            }
+        }
+
+        impl ExactSizeIterator for $all_name {}
+
+        impl DoubleEndedIterator for $all_name {
+            #[inline]
+            fn next_back(&mut self) -> Option<$name> {
+                self.0.next_back().map(|idx| unsafe { $name::from_index_unchecked(idx) })
+            }
+
+            #[inline]
+            fn nth_back(&mut self, n: usize) -> Option<$name> {
+                self.0.nth_back(n).map(|idx| unsafe { $name::from_index_unchecked(idx) })
+            }
         }
 
         $(
             $(#[$map_attr])*
+            #[repr(C)]
             $map_vis struct $map_name<T> {
                 $(pub $mapped_name: T),*
             }
 
             #[derive(Clone, Debug)]
-            $map_vis struct IntoIter<T>(core::array::IntoIter<($name, T), {$name::COUNT}>);
+            $map_vis struct IntoIter<T>(core::iter::Zip<$all_name, IntoValues<T>>);
 
             #[derive(Clone, Debug)]
-            $map_vis struct Iter<'a, T>(core::array::IntoIter<($name, &'a T), {$name::COUNT}>);
+            $map_vis struct Iter<'a, T>(core::iter::Zip<$all_name, Values<'a, T>>);
 
             #[derive(Debug)]
-            $map_vis struct IterMut<'a, T>(core::array::IntoIter<($name, &'a mut T), {$name::COUNT}>);
+            $map_vis struct IterMut<'a, T>(core::iter::Zip<$all_name, ValuesMut<'a, T>>);
 
             #[derive(Clone, Debug)]
             $map_vis struct IntoValues<T>(core::array::IntoIter<T, {$name::COUNT}>);
@@ -56,12 +128,12 @@ macro_rules! mapped_enum {
 
                 #[inline]
                 pub fn iter(&self) -> Iter<T> {
-                    Iter([$(($name::$map_variant, &self.$mapped_name)),*].into_iter())
+                    Iter($name::all().zip(self.values()))
                 }
 
                 #[inline]
                 pub fn iter_mut(&mut self) -> IterMut<T> {
-                    IterMut([$(($name::$map_variant, &mut self.$mapped_name)),*].into_iter())
+                    IterMut($name::all().zip(self.values_mut()))
                 }
 
                 #[inline]
@@ -85,7 +157,7 @@ macro_rules! mapped_enum {
                 type IntoIter = IntoIter<T>;
 
                 fn into_iter(self) -> IntoIter<T> {
-                    IntoIter([$(($name::$map_variant, self.$mapped_name)),*].into_iter())
+                    IntoIter($name::all().zip(self.into_values()))
                 }
             }
 
@@ -184,4 +256,4 @@ macro_rules! mapped_enum {
     };
 }
 
-pub(crate) use mapped_enum;
+pub(crate) use mapped_enum_u8;

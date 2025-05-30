@@ -295,7 +295,7 @@ impl Fen {
         Ok(())
     }
     fn write_pieces(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for rank in Rank::ALL.into_iter().rev() {
+        for rank in Rank::all().rev() {
             self.write_rank(rank, f)?;
             if rank != Rank::First {
                 write!(f, "/")?;
@@ -316,7 +316,7 @@ impl Fen {
         };
 
         let mut empty = 0;
-        for file in File::ALL {
+        for file in File::all() {
             let sq = Square::new(file, rank);
             let spot = self.setup.color_piece_at(sq);
 

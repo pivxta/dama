@@ -516,8 +516,8 @@ impl<const N: usize> From<[Square; N]> for SquareSet {
 
 impl fmt::Display for SquareSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for rank in Rank::ALL.into_iter().rev() {
-            for file in File::ALL {
+        for rank in Rank::all().rev() {
+            for file in File::all() {
                 if self.contains(Square::new(file, rank)) {
                     write!(f, "# ")?;
                 } else {

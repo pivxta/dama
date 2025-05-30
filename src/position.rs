@@ -268,9 +268,7 @@ impl Position {
             return None;
         }
 
-        Piece::ALL
-            .into_iter()
-            .find(|&p| self.pieces(p).contains(square))
+        Piece::all().find(|&p| self.pieces(p).contains(square))
     }
 
     #[inline]
@@ -729,7 +727,7 @@ impl Position {
             self.zobrist.toggle_en_passant(ep_square);
         }
 
-        for color in Color::ALL {
+        for color in Color::all() {
             if let Some(file) = self.castling[color].queen_side {
                 self.zobrist.toggle_castling(color, file);
             }
@@ -738,8 +736,8 @@ impl Position {
             }
         }
 
-        for color in Color::ALL {
-            for piece in Piece::ALL {
+        for color in Color::all() {
+            for piece in Piece::all() {
                 for square in self.colored(color) & self.pieces(piece) {
                     self.zobrist.toggle_piece(color, piece, square);
                 }
@@ -775,7 +773,7 @@ impl Position {
 
     #[inline]
     pub fn validate(&self) -> Result<(), InvalidPositionError> {
-        for color in Color::ALL {
+        for color in Color::all() {
             let count = self.king_count(color);
             if count != 1 {
                 return Err(InvalidPositionError::KingCount { color, count });
@@ -798,7 +796,7 @@ impl Position {
             return Err(InvalidPositionError::TooManyCheckers(checkers.count()));
         }
 
-        for color in Color::ALL {
+        for color in Color::all() {
             if !self.are_castling_rights_valid() {
                 return Err(InvalidPositionError::CastlingRights);
             }
@@ -1000,9 +998,7 @@ impl Setup {
 
     #[inline]
     pub fn piece_at(&self, square: Square) -> Option<Piece> {
-        Piece::ALL
-            .into_iter()
-            .find(|&p| self.pieces(p).contains(square))
+        Piece::all().find(|&p| self.pieces(p).contains(square))
     }
 
     #[inline]
@@ -1146,9 +1142,9 @@ fn is_chess960(castling: Castling, king_square: Square) -> bool {
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for rank in Rank::ALL.into_iter().rev() {
+        for rank in Rank::all().rev() {
             write!(f, "{} | ", rank)?;
-            for file in File::ALL {
+            for file in File::all() {
                 let sq = Square::new(file, rank);
                 match (self.piece_at(sq), self.color_at(sq)) {
                     (Some(piece), Some(color)) => write!(f, "{} ", piece_char(color, piece))?,
@@ -1159,7 +1155,7 @@ impl fmt::Display for Position {
         }
         writeln!(f, "  └————————————————")?;
         write!(f, "    ")?;
-        for file in File::ALL {
+        for file in File::all() {
             write!(f, "{} ", file)?;
         }
 

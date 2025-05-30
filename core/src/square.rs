@@ -1,17 +1,16 @@
-use crate::{color::Color, helpers::mapped_enum};
+use crate::{color::Color, helpers::mapped_enum_u8};
 use core::{fmt, slice};
 use std::{
-    array, iter, mem,
+    array, iter,
     ops::{Index, IndexMut},
     str::FromStr,
 };
 use thiserror::Error;
 
-mapped_enum! {
+mapped_enum_u8! {
     #[rustfmt::skip]
-    #[repr(u8)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub enum Square {
+    pub enum Square [all: Squares] {
         A1, B1, C1, D1, E1, F1, G1, H1,
         A2, B2, C2, D2, E2, F2, G2, H2,
         A3, B3, C3, D3, E3, F3, G3, H3,
@@ -23,10 +22,9 @@ mapped_enum! {
     }
 }
 
-mapped_enum! {
-    #[repr(u8)]
+mapped_enum_u8! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-    pub enum File {
+    pub enum File [all: Files] {
         A,
         B,
         C,
@@ -38,10 +36,9 @@ mapped_enum! {
     }
 }
 
-mapped_enum! {
-    #[repr(u8)]
+mapped_enum_u8! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-    pub enum Rank {
+    pub enum Rank [all: Ranks] {
         First,
         Second,
         Third,
@@ -66,26 +63,6 @@ pub struct FileParseError;
 pub struct RankParseError;
 
 impl Square {
-    #[inline]
-    pub const fn from_index(index: usize) -> Self {
-        assert!(index < 64);
-        unsafe { Self::from_index_unchecked(index) }
-    }
-
-    #[inline]
-    pub const fn try_from_index(index: usize) -> Option<Self> {
-        if index < 64 {
-            Some(unsafe { Self::from_index_unchecked(index) })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    pub const unsafe fn from_index_unchecked(index: usize) -> Self {
-        mem::transmute(index as u8)
-    }
-
     #[inline]
     pub fn from_ascii(s: &[u8]) -> Result<Self, SquareParseError> {
         if s.len() != 2 {
@@ -166,26 +143,6 @@ impl Square {
 
 impl File {
     #[inline]
-    pub const fn from_index(index: usize) -> Self {
-        assert!(index < 8);
-        unsafe { Self::from_index_unchecked(index) }
-    }
-
-    #[inline]
-    pub const fn try_from_index(index: usize) -> Option<Self> {
-        if index < 8 {
-            Some(unsafe { Self::from_index_unchecked(index) })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    pub const unsafe fn from_index_unchecked(index: usize) -> Self {
-        mem::transmute(index as u8)
-    }
-
-    #[inline]
     pub const fn distance(self, other: Self) -> u32 {
         u32::abs_diff(self as u32, other as u32)
     }
@@ -218,26 +175,6 @@ macro_rules! relative_ranks {
 }
 
 impl Rank {
-    #[inline]
-    pub const fn from_index(index: usize) -> Self {
-        assert!(index < 8);
-        unsafe { Self::from_index_unchecked(index) }
-    }
-
-    #[inline]
-    pub const fn try_from_index(index: usize) -> Option<Self> {
-        if index < 8 {
-            Some(unsafe { Self::from_index_unchecked(index) })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    pub const unsafe fn from_index_unchecked(index: usize) -> Self {
-        mem::transmute(index as u8)
-    }
-
     pub const fn back_rank(perspective: Color) -> Rank {
         Rank::first_for(perspective)
     }

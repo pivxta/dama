@@ -126,7 +126,7 @@ trait Slider {
     fn index(square: Square, occupied: SquareSet) -> usize;
 
     fn write(table: &mut [SquareSet]) {
-        for square in Square::ALL {
+        for square in Square::all() {
             for occupied in Self::relevant_blockers(square).subsets() {
                 table[Self::index(square, occupied)] = Self::moves(square, occupied);
             }
