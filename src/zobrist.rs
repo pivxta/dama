@@ -37,8 +37,8 @@ impl Zobrist {
 
 const SIDE_TO_MOVE: u64 = 0x2c90c18bb6e3acb8;
 
-const CASTLING: ByColor<[u64; 8]> = ByColor::from_array([
-    [
+const CASTLING: ByColor<[u64; 8]> = ByColor {
+    white: [
         0x08a4ac1eb784db07,
         0x6400ab3ced373473,
         0x671f9f77519f0bb7,
@@ -48,7 +48,7 @@ const CASTLING: ByColor<[u64; 8]> = ByColor::from_array([
         0x42e650a91e3f8206,
         0x436d0b0df536789c,
     ],
-    [
+    black: [
         0x775bc827e5e04b4e,
         0x4c1c818a3e9e406c,
         0x18595a9fa8f3c659,
@@ -58,7 +58,7 @@ const CASTLING: ByColor<[u64; 8]> = ByColor::from_array([
         0xbe4a878216c7b06b,
         0x2b83c9cf93e646b7,
     ],
-]);
+};
 
 // Technically, you would only need 16 numbers for this one, but i'm way too lazy for that
 const EN_PASSANT: BySquare<u64> = BySquare::from_array([
@@ -128,9 +128,9 @@ const EN_PASSANT: BySquare<u64> = BySquare::from_array([
     0x71b2b47238c910fd,
 ]);
 
-const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
-    ByPiece::from_array([
-        BySquare::from_array([
+const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor {
+    white: ByPiece {
+        pawn: BySquare::from_array([
             0xc9b1f555d6879c5c,
             0x165104da3ae1d71e,
             0xc80206e997c0ba17,
@@ -196,7 +196,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0x324624bef1e86644,
             0xd964c1d2a2257447,
         ]),
-        BySquare::from_array([
+        knight: BySquare::from_array([
             0xd771df546b107981,
             0x28dbe4925155cfb1,
             0xe98f1da7dd185217,
@@ -262,7 +262,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0x0fe7ec521ec9c47d,
             0x2041ba568cca9c56,
         ]),
-        BySquare::from_array([
+        bishop: BySquare::from_array([
             0x0f6d2b31646ef91e,
             0x6b896281567bb702,
             0xf0ed15386bc6067a,
@@ -328,7 +328,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0x446c1283a0180d52,
             0xda23eed9094a7639,
         ]),
-        BySquare::from_array([
+        rook: BySquare::from_array([
             0xd3596ffaf228c176,
             0xbef777da4d3b8414,
             0xaa744de90242a1c9,
@@ -394,7 +394,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0xc6c27ee7a3df13be,
             0x1473b4b033eeddeb,
         ]),
-        BySquare::from_array([
+        queen: BySquare::from_array([
             0x7d270ee27fbf1749,
             0x2cb7d4b9e881d472,
             0x906f1216326fcae0,
@@ -460,7 +460,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0xb6f90ebfe352ea31,
             0x9ff6eb7873f596ab,
         ]),
-        BySquare::from_array([
+        king: BySquare::from_array([
             0x3e0d3e5ebf0eccd3,
             0xcab47fff3d5d2b63,
             0x98e5ef200893ad28,
@@ -526,9 +526,9 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0x8a2c4a0e1c76cb8e,
             0x735b4346049b7886,
         ]),
-    ]),
-    ByPiece::from_array([
-        BySquare::from_array([
+    },
+    black: ByPiece {
+        pawn: BySquare::from_array([
             0xc78d9a406a4cbdeb,
             0x1a850863f1b1afcb,
             0xa2c431ba1d10011a,
@@ -594,7 +594,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0x56d928235548d64d,
             0x7780df96360afae1,
         ]),
-        BySquare::from_array([
+        knight: BySquare::from_array([
             0x3be85a89bceb6519,
             0xc6c13eb5cf98077b,
             0xfe50e3e7e92ba358,
@@ -660,7 +660,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0xcd1854db4877f830,
             0xcdf7e9b667f4352c,
         ]),
-        BySquare::from_array([
+        bishop: BySquare::from_array([
             0x5fc0a0e0376298bd,
             0xaf9dddf6bd119f72,
             0x6ee7f1c20a4c3949,
@@ -726,7 +726,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0xf93b6ed1593a44c6,
             0xb5516f46b68fb240,
         ]),
-        BySquare::from_array([
+        rook: BySquare::from_array([
             0x291a225e4c31a7e2,
             0x72149b16e173fc38,
             0x15f32d6f9bbe5872,
@@ -792,7 +792,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0x4db030c7d978e644,
             0xd4e34f4fab036ed0,
         ]),
-        BySquare::from_array([
+        queen: BySquare::from_array([
             0xb1948887bf6b71d4,
             0x31c6d244fcc78cd5,
             0x6e8696c3f2467ad9,
@@ -858,7 +858,7 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0xf7ef1abc53994f57,
             0xf53392774a8dd13d,
         ]),
-        BySquare::from_array([
+        king: BySquare::from_array([
             0x10c26ebf72e025f2,
             0xa854901b1c060b2a,
             0x16b11f2c00d3e049,
@@ -924,5 +924,5 @@ const PIECES: ByColor<ByPiece<BySquare<u64>>> = ByColor::from_array([
             0x55a09dd4a1b5370f,
             0x23056fa954a16d20,
         ]),
-    ]),
-]);
+    },
+};

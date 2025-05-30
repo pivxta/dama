@@ -1,47 +1,56 @@
-use crate::color::Color;
-use core::fmt;
-use enum_map::{Enum, EnumMap};
-use std::{mem, str::FromStr};
+use crate::{color::Color, helpers::mapped_enum};
+use core::{fmt, slice};
+use std::{
+    array, iter, mem,
+    ops::{Index, IndexMut},
+    str::FromStr,
+};
 use thiserror::Error;
 
-#[rustfmt::skip]
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Enum)]
-pub enum Square {
-    A1 = 0, B1, C1, D1, E1, F1, G1, H1,
-    A2, B2, C2, D2, E2, F2, G2, H2,
-    A3, B3, C3, D3, E3, F3, G3, H3,
-    A4, B4, C4, D4, E4, F4, G4, H4,
-    A5, B5, C5, D5, E5, F5, G5, H5,
-    A6, B6, C6, D6, E6, F6, G6, H6,
-    A7, B7, C7, D7, E7, F7, G7, H7,
-    A8, B8, C8, D8, E8, F8, G8, H8,
+mapped_enum! {
+    #[rustfmt::skip]
+    #[repr(u8)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub enum Square {
+        A1, B1, C1, D1, E1, F1, G1, H1,
+        A2, B2, C2, D2, E2, F2, G2, H2,
+        A3, B3, C3, D3, E3, F3, G3, H3,
+        A4, B4, C4, D4, E4, F4, G4, H4,
+        A5, B5, C5, D5, E5, F5, G5, H5,
+        A6, B6, C6, D6, E6, F6, G6, H6,
+        A7, B7, C7, D7, E7, F7, G7, H7,
+        A8, B8, C8, D8, E8, F8, G8, H8,
+    }
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Enum, PartialOrd, Ord)]
-pub enum File {
-    A = 0,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
+mapped_enum! {
+    #[repr(u8)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub enum File {
+        A,
+        B,
+        C,
+        D,
+        E,
+        F,
+        G,
+        H,
+    }
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Enum, PartialOrd, Ord)]
-pub enum Rank {
-    First = 0,
-    Second,
-    Third,
-    Fourth,
-    Fifth,
-    Sixth,
-    Seventh,
-    Eighth,
+mapped_enum! {
+    #[repr(u8)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub enum Rank {
+        First,
+        Second,
+        Third,
+        Fourth,
+        Fifth,
+        Sixth,
+        Seventh,
+        Eighth,
+    }
 }
 
 #[derive(Error, Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,21 +65,7 @@ pub struct FileParseError;
 #[error("invalid rank notation, expected '[1-8]'.")]
 pub struct RankParseError;
 
-use Square::*;
 impl Square {
-    #[rustfmt::skip]
-    pub const ALL: [Square; 64] = [
-        A1, B1, C1, D1, E1, F1, G1, H1,
-        A2, B2, C2, D2, E2, F2, G2, H2,
-        A3, B3, C3, D3, E3, F3, G3, H3,
-        A4, B4, C4, D4, E4, F4, G4, H4,
-        A5, B5, C5, D5, E5, F5, G5, H5,
-        A6, B6, C6, D6, E6, F6, G6, H6,
-        A7, B7, C7, D7, E7, F7, G7, H7,
-        A8, B8, C8, D8, E8, F8, G8, H8,
-    ];
-    pub const COUNT: usize = Self::ALL.len();
-
     #[inline]
     pub const fn from_index(index: usize) -> Self {
         assert!(index < 64);
@@ -170,18 +165,6 @@ impl Square {
 }
 
 impl File {
-    pub const ALL: [File; 8] = [
-        File::A,
-        File::B,
-        File::C,
-        File::D,
-        File::E,
-        File::F,
-        File::G,
-        File::H,
-    ];
-    pub const COUNT: usize = Self::ALL.len();
-
     #[inline]
     pub const fn from_index(index: usize) -> Self {
         assert!(index < 8);
@@ -235,18 +218,6 @@ macro_rules! relative_ranks {
 }
 
 impl Rank {
-    pub const ALL: [Rank; 8] = [
-        Rank::First,
-        Rank::Second,
-        Rank::Third,
-        Rank::Fourth,
-        Rank::Fifth,
-        Rank::Sixth,
-        Rank::Seventh,
-        Rank::Eighth,
-    ];
-    pub const COUNT: usize = Self::ALL.len();
-
     #[inline]
     pub const fn from_index(index: usize) -> Self {
         assert!(index < 8);
@@ -422,7 +393,177 @@ impl fmt::Display for Square {
     }
 }
 
-pub type BySquare<T> = EnumMap<Square, T>;
+#[derive(Clone, Debug)]
+pub struct IntoIter<T>(iter::Enumerate<array::IntoIter<T, { Square::COUNT }>>);
+
+#[derive(Clone, Debug)]
+pub struct Iter<'a, T>(iter::Enumerate<slice::Iter<'a, T>>);
+
+#[derive(Debug)]
+pub struct IterMut<'a, T>(iter::Enumerate<slice::IterMut<'a, T>>);
+
+#[derive(Clone, Debug)]
+pub struct IntoValues<T>(array::IntoIter<T, { Square::COUNT }>);
+
+#[derive(Clone, Debug)]
+pub struct Values<'a, T>(slice::Iter<'a, T>);
+
+#[derive(Debug)]
+pub struct ValuesMut<'a, T>(slice::IterMut<'a, T>);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BySquare<T>([T; Square::COUNT]);
+
+impl<T> BySquare<T> {
+    #[inline]
+    pub const fn from_array(arr: [T; Square::COUNT]) -> Self {
+        Self(arr)
+    }
+
+    #[inline]
+    pub fn from_fn(mut f: impl FnMut(Square) -> T) -> Self {
+        Self(array::from_fn(|sq| unsafe {
+            f(Square::from_index_unchecked(sq))
+        }))
+    }
+
+    #[inline]
+    pub fn iter(&self) -> Iter<T> {
+        Iter(self.0.iter().enumerate())
+    }
+
+    #[inline]
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut(self.0.iter_mut().enumerate())
+    }
+
+    #[inline]
+    pub fn into_values(self) -> IntoValues<T> {
+        IntoValues(self.0.into_iter())
+    }
+
+    #[inline]
+    pub fn values(&self) -> Values<T> {
+        Values(self.0.iter())
+    }
+
+    #[inline]
+    pub fn values_mut(&mut self) -> ValuesMut<T> {
+        ValuesMut(self.0.iter_mut())
+    }
+}
+
+impl<T> IntoIterator for BySquare<T> {
+    type Item = (Square, T);
+    type IntoIter = IntoIter<T>;
+
+    #[inline]
+    fn into_iter(self) -> IntoIter<T> {
+        IntoIter(self.0.into_iter().enumerate())
+    }
+}
+
+impl<'a, T> IntoIterator for &'a BySquare<T> {
+    type Item = (Square, &'a T);
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Iter<'a, T> {
+        self.iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut BySquare<T> {
+    type Item = (Square, &'a mut T);
+    type IntoIter = IterMut<'a, T>;
+
+    fn into_iter(self) -> IterMut<'a, T> {
+        self.iter_mut()
+    }
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = (Square, T);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0
+            .next()
+            .map(|(i, value)| (unsafe { Square::from_index_unchecked(i) }, value))
+    }
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = (Square, &'a T);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0
+            .next()
+            .map(|(i, value)| (unsafe { Square::from_index_unchecked(i) }, value))
+    }
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = (Square, &'a mut T);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0
+            .next()
+            .map(|(i, value)| (unsafe { Square::from_index_unchecked(i) }, value))
+    }
+}
+
+impl<'a, T> Iterator for Values<'a, T> {
+    type Item = &'a T;
+
+    #[inline]
+    fn next(&mut self) -> Option<&'a T> {
+        self.0.next()
+    }
+}
+
+impl<'a, T> Iterator for ValuesMut<'a, T> {
+    type Item = &'a mut T;
+
+    #[inline]
+    fn next(&mut self) -> Option<&'a mut T> {
+        self.0.next()
+    }
+}
+
+impl<T> Default for BySquare<T>
+where
+    T: Default,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::from_array(array::from_fn(|_| Default::default()))
+    }
+}
+
+impl<T> From<[T; Square::COUNT]> for BySquare<T> {
+    #[inline]
+    fn from(arr: [T; Square::COUNT]) -> Self {
+        Self::from_array(arr)
+    }
+}
+
+impl<T> Index<Square> for BySquare<T> {
+    type Output = T;
+
+    #[inline]
+    fn index(&self, square: Square) -> &T {
+        &self.0[square as usize]
+    }
+}
+
+impl<T> IndexMut<Square> for BySquare<T> {
+    #[inline]
+    fn index_mut(&mut self, square: Square) -> &mut T {
+        &mut self.0[square as usize]
+    }
+}
 
 #[cfg(test)]
 mod tests {

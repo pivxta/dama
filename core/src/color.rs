@@ -1,20 +1,20 @@
+use crate::helpers::mapped_enum;
 use core::fmt;
 use std::ops::Not;
 
-use enum_map::{Enum, EnumMap};
+mapped_enum! {
+    #[repr(u8)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub enum Color {
+        White,
+        Black,
+    }
 
-pub type ByColor<T> = EnumMap<Color, T>;
-
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Enum)]
-pub enum Color {
-    White,
-    Black,
-}
-
-impl Color {
-    pub const ALL: [Color; 2] = [Color::White, Color::Black];
-    pub const COUNT: usize = 2;
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+    pub map ByColor {
+        White => white,
+        Black => black
+    }
 }
 
 impl Not for Color {

@@ -132,7 +132,7 @@ impl SanMove {
     pub fn from_move_nosuffix(mv: Move, position: &Position) -> Result<SanMove, SanError> {
         Ok(SanMove {
             kind: SanKind::from_move(mv, position)?,
-            suffix: None
+            suffix: None,
         })
     }
 

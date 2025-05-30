@@ -1,36 +1,33 @@
+use crate::helpers::mapped_enum;
 use std::str::FromStr;
-
-use enum_map::{Enum, EnumMap};
 use thiserror::Error;
 
-pub type ByPiece<T> = EnumMap<Piece, T>;
+mapped_enum! {
+    #[repr(u8)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub enum Piece {
+        Pawn,
+        Knight,
+        Bishop,
+        Rook,
+        Queen,
+        King,
+    }
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Enum)]
-pub enum Piece {
-    Pawn,
-    Knight,
-    Bishop,
-    Rook,
-    Queen,
-    King,
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+    pub map ByPiece {
+        Pawn => pawn,
+        Knight => knight,
+        Bishop => bishop,
+        Rook => rook,
+        Queen => queen,
+        King => king
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Error)]
 #[error("invalid piece character, expected 'p|n|b|r|q|k|P|N|B|R|Q|K'")]
 pub struct PieceParseError;
-
-impl Piece {
-    pub const ALL: [Piece; 6] = [
-        Piece::Pawn,
-        Piece::Knight,
-        Piece::Bishop,
-        Piece::Rook,
-        Piece::Queen,
-        Piece::King,
-    ];
-    pub const COUNT: usize = Self::ALL.len();
-}
 
 impl FromStr for Piece {
     type Err = PieceParseError;

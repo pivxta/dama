@@ -1,7 +1,5 @@
 pub mod fen;
 mod game;
-#[doc(hidden)]
-pub mod helpers;
 mod movegen;
 mod mv;
 mod perft;
@@ -14,9 +12,9 @@ mod zobrist;
 
 pub use dama_core::{
     castling::{Castling, CastlingSide},
-    color::{ByColor, Color},
-    piece::{ByPiece, Piece, PieceParseError},
-    square::{BySquare, File, Rank, Square, SquareParseError},
+    color::{self, ByColor, Color},
+    piece::{self, ByPiece, Piece, PieceParseError},
+    square::{self, BySquare, File, Rank, Square, SquareParseError},
     squareset::{self, SquareSet},
 };
 pub use fen::{Fen, FenError, FenParseError, FormattedFen};

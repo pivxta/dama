@@ -1,7 +1,6 @@
 use crate::{
-    by_piece, zobrist::Zobrist, ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen,
-    FenError, FenParseError, File, Move, MoveKind, Piece, Rank, Square, SquareSet, SquareSets,
-    ToMove,
+    zobrist::Zobrist, ByColor, ByPiece, BySquare, Castling, CastlingSide, Color, Fen, FenError,
+    FenParseError, File, Move, MoveKind, Piece, Rank, Square, SquareSet, SquareSets, ToMove,
 };
 use core::fmt;
 use std::str::FromStr;
@@ -215,12 +214,12 @@ impl Position {
 
     #[inline]
     pub fn white(&self) -> SquareSet {
-        self.colors[Color::White]
+        self.colors.white
     }
 
     #[inline]
     pub fn black(&self) -> SquareSet {
-        self.colors[Color::Black]
+        self.colors.black
     }
 
     #[inline]
@@ -364,8 +363,7 @@ impl Position {
 
     #[inline]
     pub fn king(&self, color: Color) -> Option<Square> {
-        (self.pieces[Piece::King] & self.colors[color]).single()
-        //.unwrap_or_else(|| panic!("invalid number of {:?} kings in the board", color))
+        (self.pieces.king & self.colors[color]).single()
     }
 
     #[inline]
@@ -1030,7 +1028,7 @@ impl Setup {
 
     #[inline]
     pub fn king(&self, color: Color) -> Option<Square> {
-        (self.pieces[Piece::King] & self.colors[color]).single()
+        (self.pieces.king & self.colors[color]).single()
     }
 
     #[inline]
@@ -1128,8 +1126,8 @@ impl Setup {
 
         match self.variant {
             Some(variant) => variant,
-            None if is_chess960(self.castling[Color::White], white_king)
-                || is_chess960(self.castling[Color::Black], black_king) =>
+            None if is_chess960(self.castling.white, white_king)
+                || is_chess960(self.castling.black, black_king) =>
             {
                 Variant::Chess960
             }
@@ -1245,13 +1243,13 @@ fn initial_chess960(seed: u32) -> (ByPiece<SquareSet>, ByColor<Castling>) {
 
     let king = free_squares.single().unwrap();
 
-    let mut pieces = by_piece! {
-        Pawn => INITIAL_PIECES[Piece::Pawn],
-        Knight => SquareSet::from([knight1, knight2]),
-        Bishop => SquareSet::from([bishop1, bishop2]),
-        Rook => SquareSet::from([rook1, rook2]),
-        Queen => SquareSet::from(queen),
-        King => SquareSet::from(king),
+    let mut pieces = ByPiece {
+        pawn: INITIAL_PIECES.pawn,
+        knight: SquareSet::from([knight1, knight2]),
+        bishop: SquareSet::from([bishop1, bishop2]),
+        rook: SquareSet::from([rook1, rook2]),
+        queen: SquareSet::from(queen),
+        king: SquareSet::from(king),
     };
 
     let castling = Castling {
@@ -1268,27 +1266,19 @@ fn initial_chess960(seed: u32) -> (ByPiece<SquareSet>, ByColor<Castling>) {
 
 const INITIAL_OCCUPIED: SquareSet = SquareSet::from_bits(0xffff00000000ffff);
 
-const INITIAL_PIECES: ByPiece<SquareSet> = ByPiece::from_array([
-    // Pawn
-    SquareSet::from_bits(0x00ff00000000ff00),
-    // Knight
-    SquareSet::from_bits(0x4200000000000042),
-    // Bishop
-    SquareSet::from_bits(0x2400000000000024),
-    // Rook
-    SquareSet::from_bits(0x8100000000000081),
-    // Queen
-    SquareSet::from_bits(0x0800000000000008),
-    // King
-    SquareSet::from_bits(0x1000000000000010),
-]);
+const INITIAL_PIECES: ByPiece<SquareSet> = ByPiece {
+    pawn: SquareSet::from_bits(0x00ff00000000ff00),
+    knight: SquareSet::from_bits(0x4200000000000042),
+    bishop: SquareSet::from_bits(0x2400000000000024),
+    rook: SquareSet::from_bits(0x8100000000000081),
+    queen: SquareSet::from_bits(0x0800000000000008),
+    king: SquareSet::from_bits(0x1000000000000010),
+};
 
-const INITIAL_COLORS: ByColor<SquareSet> = ByColor::from_array([
-    // White
-    SquareSet::from_bits(0x000000000000ffff),
-    // Black
-    SquareSet::from_bits(0xffff000000000000),
-]);
+const INITIAL_COLORS: ByColor<SquareSet> = ByColor {
+    white: SquareSet::from_bits(0x000000000000ffff),
+    black: SquareSet::from_bits(0xffff000000000000),
+};
 
 #[cfg(test)]
 mod tests {

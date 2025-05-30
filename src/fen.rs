@@ -4,7 +4,7 @@ use crate::{
     Square, SquareParseError, SquareSets, Variant,
 };
 use core::fmt;
-use dama_core::{enum_map, squareset::SquareSet};
+use dama_core::{color::ByColor, piece::ByPiece, squareset::SquareSet};
 use std::{cmp::Ordering, str::FromStr};
 use thiserror::Error;
 
@@ -120,9 +120,9 @@ impl Fen {
             return Err(FenParseError::InvalidCastlingRights);
         }
 
-        let king_file = enum_map! {
-            Color::White => self.king_file(Color::White)?,
-            Color::Black => self.king_file(Color::Black)?,
+        let king_file = ByColor {
+            white: self.king_file(Color::White)?,
+            black: self.king_file(Color::Black)?,
         };
 
         for c in s {
@@ -306,13 +306,13 @@ impl Fen {
     }
 
     fn write_rank(&self, rank: Rank, f: &mut fmt::Formatter) -> fmt::Result {
-        let piece_chars = enum_map! {
-            Piece::Pawn => 'p',
-            Piece::Knight => 'n',
-            Piece::Bishop => 'b',
-            Piece::Rook => 'r',
-            Piece::Queen => 'q',
-            Piece::King => 'k',
+        let piece_chars = ByPiece {
+            pawn: 'p',
+            knight: 'n',
+            bishop: 'b',
+            rook: 'r',
+            queen: 'q',
+            king: 'k',
         };
 
         let mut empty = 0;
