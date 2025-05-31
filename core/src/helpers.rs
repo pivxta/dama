@@ -127,6 +127,27 @@ macro_rules! mapped_enum_u8 {
                 }
 
                 #[inline]
+                pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> $map_name<U> {
+                    $map_name {
+                        $($mapped_name: f(self.$mapped_name)),*
+                    }
+                }
+
+                #[inline]
+                pub const fn as_ref(&self) -> $map_name<&T> {
+                    $map_name {
+                        $($mapped_name: &self.$mapped_name),*
+                    }
+                }
+
+                #[inline]
+                pub const fn as_mut(&mut self) -> $map_name<&mut T> {
+                    $map_name {
+                        $($mapped_name: &mut self.$mapped_name),*
+                    }
+                }
+
+                #[inline]
                 pub fn iter(&self) -> Iter<T> {
                     Iter($name::all().zip(self.values()))
                 }
@@ -149,6 +170,24 @@ macro_rules! mapped_enum_u8 {
                 #[inline]
                 pub fn values_mut(&mut self) -> ValuesMut<T> {
                     ValuesMut([$(&mut self.$mapped_name),*].into_iter())
+                }
+            }
+
+            impl<T> $map_name<&T> {
+                #[inline]
+                pub fn copied(self) -> $map_name<T>
+                where
+                    T: Copy
+                {
+                    self.map(|v| *v)
+                }
+
+                #[inline]
+                pub fn cloned(self) -> $map_name<T>
+                where
+                    T: Clone
+                {
+                    self.map(|v| v.clone())
                 }
             }
 
