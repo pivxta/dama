@@ -7,7 +7,6 @@ use core::fmt;
 use dama_core::{color::ByColor, piece::ByPiece, squareset::SquareSet};
 use std::{cmp::Ordering, str::FromStr};
 use thiserror::Error;
-// teste
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fen {
