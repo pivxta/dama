@@ -2,6 +2,12 @@
 name = "dama"
 version = "0.1.0"
 edition = "2021"
+description = "A general-purpose rust library for standard chess and chess960."
+readme = "README.md"
+categories = ["games", "parser-implementation"]
+keywords = ["chess", "chess960", "pgn"]
+repository = "https://github.com/pivxta/dama"
+license = "MIT"
 
 [workspace]
 members = ["core"]

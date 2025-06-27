@@ -1,7 +1,13 @@
 [package]
-name = "dama-core"
+name = "dama_core"
 version = "0.1.0"
 edition = "2021"
+description = "A dama crate with some core chess types."
+readme = "README.md"
+categories = ["games", "parser-implementation"]
+keywords = ["chess", "chess960", "pgn"]
+repository = "https://github.com/pivxta/dama"
+license = "MIT"
 
 [dependencies]
 enum-map = { workspace = true }
