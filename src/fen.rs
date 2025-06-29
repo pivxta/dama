@@ -189,8 +189,7 @@ impl Fen {
     }
 
     fn king_file(&self, color: Color) -> Result<File, FenParseError> {
-        self.setup
-            .pieces(Piece::King)
+        (self.setup.pieces(Piece::King) & self.setup.colored(color))
             .first()
             .map(|square| square.file())
             .ok_or(FenParseError::NoKingFound(color))
@@ -692,6 +691,16 @@ mod tests {
         let pos =
             Fen::from_str("rnbqkbnr/1pp1pppp/p7/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3").unwrap();
         assert_eq!(pos.setup.en_passant, Some(D6));
+    }
+
+    #[test]
+    fn from_fen() {
+        let pos = Fen::from_str("r2qk2r/ppp3pp/3bPn2/8/2Ppp3/1P2Pn1B/PB1P1P1P/R2Q1R1K b kq - 4 15")
+            .unwrap();
+        assert_eq!(
+            pos.to_string(),
+            "r2qk2r/ppp3pp/3bPn2/8/2Ppp3/1P2Pn1B/PB1P1P1P/R2Q1R1K b kq - 4 15"
+        );
     }
 
     fn rank(rank: Rank) -> SquareSet {
